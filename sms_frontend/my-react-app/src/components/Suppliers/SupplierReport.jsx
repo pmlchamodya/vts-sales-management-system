@@ -1,0 +1,1820 @@
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import api from "../../api";
+import { useNavigate } from 'react-router-dom';
+
+const SupplierReport = () => {
+    const navigate = useNavigate();
+
+    // State for all data
+    const [summary, setSummary] = useState({ printed: [], unprinted: [] });
+    const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false); // New state for auto-refresh indicator
+
+    // 🚀 NEW STATE: Bill size selector (3mm or 4mm) - PERSISTED
+    const [billSize, setBillSize] = useState(() => {
+        const saved = localStorage.getItem('supplier_bill_size');
+        return saved || '3mm';
+    });
+
+    // 🚀 NEW STATE: Print Format selector (Thermal or A4) - PERSISTED
+    const [printFormat, setPrintFormat] = useState(() => {
+        const saved = localStorage.getItem('supplier_print_format');
+        return saved || 'thermal';
+    });
+
+    // Save billSize to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem('supplier_bill_size', billSize);
+    }, [billSize]);
+
+    // Save printFormat to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem('supplier_print_format', printFormat);
+    }, [printFormat]);
+
+    const [printedSearchTerm, setPrintedSearchTerm] = useState('');
+    const [unprintedSearchTerm, setUnprintedSearchTerm] = useState('');
+    const [isPhoneManuallyChanged, setIsPhoneManuallyChanged] = useState(false);
+    //new states  in adding telephone no
+    const [phoneNo, setPhoneNo] = useState('');
+    const [phoneStatus, setPhoneStatus] = useState(''); // For feedback
+    const [enteredAmount, setEnteredAmount] = useState(0);
+
+    // 🚀 NEW STATE: For loan/paying amount
+    const [payingAmount, setPayingAmount] = useState('');
+    const [loanStatus, setLoanStatus] = useState(''); // For feedback
+
+    const [currentView, setCurrentView] = useState('summary');
+    const [profilePic, setProfilePic] = useState(null);
+    // Add these with your other state variables
+    const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+    const [supplierDocs, setSupplierDocs] = useState({ title: '', profile: null, nic_front: null, nic_back: null });
+    //useeffects to store the option in local storage and retrieve it on component mount
+    // Add these after your existing useState declarations (around line 30-35)
+
+    // Load saved values from localStorage on component mount
+    useEffect(() => {
+        const savedBillSize = localStorage.getItem('supplier_bill_size');
+        if (savedBillSize) {
+            setBillSize(savedBillSize);
+        }
+
+        const savedPrintFormat = localStorage.getItem('supplier_print_format');
+        if (savedPrintFormat) {
+            setPrintFormat(savedPrintFormat);
+        }
+    }, []);
+
+    // Save billSize to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem('supplier_bill_size', billSize);
+    }, [billSize]);
+
+    // Save printFormat to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem('supplier_print_format', printFormat);
+    }, [printFormat]);
+    // State for Details Panel
+    const [selectedSupplier, setSelectedSupplier] = useState(null);
+    const [selectedBillNo, setSelectedBillNo] = useState(null);
+    const [isUnprintedBill, setIsUnprintedBill] = useState(false);
+    const [supplierDetails, setSupplierDetails] = useState([]);
+    const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+
+    // 🚀 NEW STATE: To hold the advance amount from the suppliers table
+    const [advanceAmount, setAdvanceAmount] = useState(0);
+
+    // 🚀 NEW STATE: For the Advance Entry Form Logic
+    const [advancePayload, setAdvancePayload] = useState({ code: '', advance_amount: '' });
+    const [advanceLoading, setAdvanceLoading] = useState(false);
+    const [advanceStatus, setAdvanceStatus] = useState({ type: '', text: '' });
+
+    // 🚀 NEW STATE: For Editing Records
+    const [editingRecord, setEditingRecord] = useState(null);
+    const [newFarmerCode, setNewFarmerCode] = useState('');
+    const [newCustomerCode, setNewCustomerCode] = useState('');
+    // 🚀 BULK EDIT STATE
+    const [applyToAllSameItems, setApplyToAllSameItems] = useState(true);
+
+    // 🚀 AUTO-REFRESH: Store interval reference
+    const refreshIntervalRef = useRef(null);
+    const isPrintingOrUpdatingRef = useRef(false);
+
+    // --- Function to fetch the summary data ---
+    const fetchSummary = useCallback(async (isAutoRefresh = false) => {
+        // Don't fetch if we're in the middle of printing or updating
+        if (isPrintingOrUpdatingRef.current) {
+            console.log("⏸️ Skipping refresh - printing or updating in progress");
+            return;
+        }
+
+        // Set refreshing state for auto-refresh, but not for initial load
+        if (isAutoRefresh) {
+            setIsRefreshing(true);
+        } else {
+            setIsLoading(true);
+        }
+
+        setCurrentView('summary');
+        console.log("➡️ Attempting to fetch supplier summary data from backend...");
+        try {
+            const response = await api.get('/suppliers/bill-status-summary');
+
+            if (response.data) {
+                console.log("✅ Summary data received.");
+                setSummary({
+                    printed: response.data.printed || [],
+                    unprinted: response.data.unprinted || [],
+                });
+            } else {
+                console.warn("⚠️ Received empty response body or data structure from /suppliers/bill-status-summary.");
+                setSummary({ printed: [], unprinted: [] });
+            }
+
+        } catch (error) {
+            console.error('❌ Error fetching summary data:', error.message, error.response?.data);
+            setSummary({ printed: [], unprinted: [] });
+        } finally {
+            if (isAutoRefresh) {
+                setIsRefreshing(false);
+            } else {
+                setIsLoading(false);
+            }
+        }
+    }, []);
+
+    // 🚀 NEW: Function to refresh supplier profile data
+    // 🚀 NEW: Function to refresh supplier profile data (preserves manual phone changes)
+    const fetchSupplierProfile = useCallback(async (supplierCode) => {
+        if (!supplierCode || isPrintingOrUpdatingRef.current) return;
+
+        try {
+            const supRes = await api.get(`/suppliers/search-by-code/${supplierCode}`);
+            if (supRes.data) {
+                setAdvanceAmount(parseFloat(supRes.data.advance_amount) || 0);
+                setProfilePic(supRes.data.profile_pic);
+
+                // Only update phone number if it hasn't been manually changed by user
+                if (!isPhoneManuallyChanged) {
+                    setPhoneNo(supRes.data.telephone_no || '');
+                }
+
+                setSupplierDocs({
+                    title: supRes.data.name || supplierCode,
+                    profile: supRes.data.profile_pic,
+                    nic_front: supRes.data.nic_front,
+                    nic_back: supRes.data.nic_back
+                });
+            }
+        } catch (error) {
+            console.error("Error refreshing supplier profile:", error);
+        }
+    }, [isPhoneManuallyChanged]);
+
+    // 🚀 NEW: Function to refresh bill details
+    const refreshBillDetails = useCallback(async () => {
+        if (!selectedSupplier || isPrintingOrUpdatingRef.current) return;
+
+        try {
+            if (isUnprintedBill) {
+                const response = await api.get(`/suppliers/${selectedSupplier}/unprinted-details`);
+                setSupplierDetails(response.data);
+            } else if (selectedBillNo) {
+                const response = await api.get(`/suppliers/bill/${selectedBillNo}/details`);
+                setSupplierDetails(response.data);
+            }
+        } catch (error) {
+            console.error("Error refreshing bill details:", error);
+        }
+    }, [selectedSupplier, selectedBillNo, isUnprintedBill]);
+
+    // 🚀 AUTO-REFRESH: Setup interval to refresh all data every 3 seconds
+    useEffect(() => {
+        // Start auto-refresh
+        refreshIntervalRef.current = setInterval(async () => {
+            console.log("🔄 Auto-refreshing data...");
+
+            // Refresh summary (pass true to indicate auto-refresh)
+            await fetchSummary(true);
+
+            // Refresh current bill details if a supplier is selected
+            if (selectedSupplier) {
+                await refreshBillDetails();
+                await fetchSupplierProfile(selectedSupplier);
+            }
+        }, 3000); // 3 seconds
+
+        // Cleanup on component unmount
+        return () => {
+            if (refreshIntervalRef.current) {
+                clearInterval(refreshIntervalRef.current);
+                refreshIntervalRef.current = null;
+            }
+        };
+    }, [fetchSummary, refreshBillDetails, fetchSupplierProfile, selectedSupplier]);
+
+    // --- Initial Fetch ---
+    useEffect(() => {
+        fetchSummary();
+    }, [fetchSummary]);
+
+    // --- Navigation Handler ---
+    const goToSalesEntry = () => {
+        navigate('/sales');
+    };
+
+    // 🚀 NEW: Handle Advance Entry Form Submission
+    const handleAdvanceSubmit = async (e) => {
+        e.preventDefault();
+        setAdvanceLoading(true);
+        setAdvanceStatus({ type: '', text: '' });
+
+        // Pause auto-refresh during update
+        isPrintingOrUpdatingRef.current = true;
+
+        try {
+            const response = await api.post('/suppliers/advance', advancePayload);
+            setAdvanceStatus({ type: 'success', text: `සාර්ථකයි! අත්තිකාරම් යාවත්කාලීන විය.` });
+
+            // Immediately update the display advance amount
+            setAdvanceAmount(parseFloat(response.data.data.advance_amount) || 0);
+            setAdvancePayload({ ...advancePayload, advance_amount: '' });
+
+            // Refresh data after update
+            await fetchSummary();
+            if (selectedSupplier) {
+                await fetchSupplierProfile(selectedSupplier);
+            }
+        } catch (error) {
+            console.error("Advance Update Error:", error);
+            setAdvanceStatus({ type: 'error', text: 'යාවත්කාලීන කිරීම අසාර්ථක විය.' });
+        } finally {
+            setAdvanceLoading(false);
+            setTimeout(() => {
+                isPrintingOrUpdatingRef.current = false;
+            }, 500);
+        }
+    };
+
+    // --- 🚀 NEW: Update Farmer Logic (Enhanced for Bulk) ---
+    const handleUpdateFarmer = async () => {
+        const finalSupplierCode = newFarmerCode || editingRecord.supplier_code;
+        const finalCustomerCode = newCustomerCode || editingRecord.customer_code;
+
+        // Logic to determine which IDs to update
+        let idsToUpdate = [editingRecord.id];
+        if (applyToAllSameItems) {
+            idsToUpdate = supplierDetails
+                .filter(item => item.item_name === editingRecord.item_name)
+                .map(item => item.id);
+        }
+
+        // Pause auto-refresh during update
+        isPrintingOrUpdatingRef.current = true;
+
+        try {
+            setIsDetailsLoading(true);
+            // Using a generic update endpoint that handles arrays or multiple IDs
+            const response = await api.put(`/sales/bulk-update-supplier`, {
+                transaction_ids: idsToUpdate,
+                supplier_code: finalSupplierCode,
+                customer_code: finalCustomerCode
+            });
+
+            if (response.status === 200) {
+                setEditingRecord(null);
+                setNewFarmerCode('');
+                setNewCustomerCode('');
+                setApplyToAllSameItems(true);
+
+                // Refresh current view
+                if (isUnprintedBill) {
+                    await handleUnprintedBillClick(selectedSupplier, null);
+                } else {
+                    await handlePrintedBillClick(selectedSupplier, selectedBillNo);
+                }
+                await fetchSummary();
+            }
+        } catch (error) {
+            console.error("Update failed:", error);
+            alert("Failed to update records.");
+        } finally {
+            setIsDetailsLoading(false);
+            setTimeout(() => {
+                isPrintingOrUpdatingRef.current = false;
+            }, 500);
+        }
+    };
+
+    // --- Filtering Logic ---
+    const filteredPrintedItems = useMemo(() => {
+        const lowerCaseSearch = printedSearchTerm.toLowerCase();
+        const filtered = summary.printed.filter(item =>
+            item.supplier_code.toLowerCase().includes(lowerCaseSearch) ||
+            (item.supplier_bill_no && item.supplier_bill_no.toLowerCase().includes(lowerCaseSearch))
+        );
+        return filtered;
+    }, [printedSearchTerm, summary.printed]);
+
+    const filteredUnprintedItems = useMemo(() => {
+        const lowerCaseSearch = unprintedSearchTerm.toLowerCase();
+        const filtered = summary.unprinted.filter(item =>
+            item.supplier_code.toLowerCase().includes(lowerCaseSearch)
+        );
+        return filtered;
+    }, [unprintedSearchTerm, summary.unprinted]);
+
+    // --- Handle Unprinted Bill Click ---
+    // --- Handle Printed Bill Click ---
+    const handlePrintedBillClick = async (supplierCode, billNo) => {
+        // Pause auto-refresh while loading new data
+        isPrintingOrUpdatingRef.current = true;
+
+        setSelectedSupplier(supplierCode);
+        setSelectedBillNo(billNo);
+        setIsUnprintedBill(false);
+        setSupplierDetails([]);
+        setAdvanceAmount(0);
+        setProfilePic(null);
+        setPhoneNo(''); // Reset before fetch
+        setIsPhoneManuallyChanged(false); // 🔄 RESET manual change flag for new bill
+        setPayingAmount(''); // Reset paying amount
+        setAdvancePayload({ code: supplierCode, advance_amount: '' });
+        setIsDetailsLoading(true);
+
+        try {
+            const response = await api.get(`/suppliers/bill/${billNo}/details`);
+            setSupplierDetails(response.data);
+
+            // Fetch supplier profile to get the saved telephone number
+            const supRes = await api.get(`/suppliers/search-by-code/${supplierCode}`);
+            if (supRes.data) {
+                setAdvanceAmount(parseFloat(supRes.data.advance_amount) || 0);
+                setProfilePic(supRes.data.profile_pic);
+                // 🚀 MATCHING & FETCHING: This gets the phone from the DB record
+                setPhoneNo(supRes.data.telephone_no || '');
+
+                setSupplierDocs({
+                    title: supRes.data.name || supplierCode,
+                    profile: supRes.data.profile_pic,
+                    nic_front: supRes.data.nic_front,
+                    nic_back: supRes.data.nic_back
+                });
+            }
+        } catch (error) {
+            console.error(`❌ Error fetching printed details:`, error.message);
+        } finally {
+            setIsDetailsLoading(false);
+            setTimeout(() => {
+                isPrintingOrUpdatingRef.current = false;
+            }, 500);
+        }
+    };
+
+    // --- Updated: Handle Unprinted Bill Click ---
+    const handleUnprintedBillClick = async (supplierCode, billNo) => {
+        // Pause auto-refresh while loading new data
+        isPrintingOrUpdatingRef.current = true;
+
+        setSelectedSupplier(supplierCode);
+        setSelectedBillNo(billNo);
+        setIsUnprintedBill(true);
+        setSupplierDetails([]);
+        setAdvanceAmount(0);
+        setProfilePic(null);
+        setPhoneNo(''); // Reset before fetch
+        setIsPhoneManuallyChanged(false); // 🔄 RESET manual change flag for new bill
+        setPayingAmount(''); // Reset paying amount
+        setAdvancePayload({ code: supplierCode, advance_amount: '' });
+        setIsDetailsLoading(true);
+
+        try {
+            const response = await api.get(`/suppliers/${supplierCode}/unprinted-details`);
+            setSupplierDetails(response.data);
+
+            // Fetch supplier profile to get the saved telephone number
+            const supRes = await api.get(`/suppliers/search-by-code/${supplierCode}`);
+            if (supRes.data) {
+                setAdvanceAmount(parseFloat(supRes.data.advance_amount) || 0);
+                setProfilePic(supRes.data.profile_pic);
+                // 🚀 MATCHING & FETCHING: This gets the phone from the DB record
+                setPhoneNo(supRes.data.telephone_no || '');
+
+                setSupplierDocs({
+                    title: supRes.data.name || supplierCode,
+                    profile: supRes.data.profile_pic,
+                    nic_front: supRes.data.nic_front,
+                    nic_back: supRes.data.nic_back
+                });
+            }
+        } catch (error) {
+            console.error(`❌ Error fetching unprinted details:`, error.message);
+        } finally {
+            setIsDetailsLoading(false);
+            setTimeout(() => {
+                isPrintingOrUpdatingRef.current = false;
+            }, 500);
+        }
+    };
+
+    // --- Function to reset details ---
+    const resetDetails = () => {
+        setSelectedSupplier(null);
+        setSelectedBillNo(null);
+        setIsUnprintedBill(false);
+        setSupplierDetails([]);
+        setAdvanceAmount(0);
+        setAdvancePayload({ code: '', advance_amount: '' });
+        setProfilePic(null);
+        fetchSummary();
+    };
+
+    // --- Helper function for details panel ---
+    const formatDecimal = (value, decimals = 2) => (parseFloat(value) || 0).toLocaleString(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+    });
+
+    //function to add telephone number
+    const handlePhoneSubmit = async (e) => {
+        if (e.key === 'Enter') {
+            if (!selectedSupplier) return;
+
+            // Pause auto-refresh during update
+            isPrintingOrUpdatingRef.current = true;
+
+            setPhoneStatus('Updating...');
+            try {
+                await api.post('/suppliers/update-phone', {
+                    code: selectedSupplier,
+                    telephone_no: phoneNo
+                });
+                setPhoneStatus('✅ Saved');
+                setTimeout(() => setPhoneStatus(''), 2000);
+
+                // Refresh supplier profile after update
+                await fetchSupplierProfile(selectedSupplier);
+            } catch (error) {
+                console.error("Phone Update Error:", error);
+                setPhoneStatus('❌ Error');
+            } finally {
+                setTimeout(() => {
+                    isPrintingOrUpdatingRef.current = false;
+                }, 500);
+            }
+        }
+    };
+
+    // 🚀 NEW: Handle loan amount submission and trigger print
+    const handleLoanSubmit = async (e) => {
+        if (e.key === 'Enter') {
+            if (!selectedSupplier || !payingAmount || parseFloat(payingAmount) <= 0) {
+                setLoanStatus('⚠️ Invalid amount');
+                setTimeout(() => setLoanStatus(''), 2000);
+                return;
+            }
+
+            // Pause auto-refresh during loan processing
+            isPrintingOrUpdatingRef.current = true;
+            setLoanStatus('Processing...');
+
+            try {
+                // Calculate total amount (SupplierTotal - payingAmount)
+                const totalAmount = totalsupplierSales - parseFloat(payingAmount);
+
+                // Save the loan amount
+                await api.post('/supplier-loan', {
+                    code: selectedSupplier,
+                    loan_amount: parseFloat(payingAmount),
+                    total_amount: totalAmount,
+                    bill_no: selectedBillNo || null
+                });
+
+                setLoanStatus('✅ Loan saved');
+
+                // Clear the input
+                setPayingAmount('');
+
+                // Small delay to ensure the loan is saved before printing
+                setTimeout(() => {
+                    // Trigger the print function
+                    handlePrint();
+                }, 300);
+
+            } catch (error) {
+                console.error("Loan Update Error:", error);
+
+                if (error.response && error.response.status === 422) {
+                    setLoanStatus('⚠️ Invalid supplier code');
+                } else {
+                    setLoanStatus('❌ Error');
+                }
+
+                setTimeout(() => setLoanStatus(''), 2000);
+            } finally {
+                setTimeout(() => {
+                    isPrintingOrUpdatingRef.current = false;
+                }, 1000);
+            }
+        }
+    };
+
+    const getRowStyle = (index) => index % 2 === 0 ? { backgroundColor: '#f8f9fa' } : { backgroundColor: '#ffffff' };
+
+    // --- CALCULATIONS (Updated to include CustomerPackCost) ---
+    const {
+        totalWeight,
+        totalCommission,
+        amountPayable,
+        itemSummaryData,
+        totalPacksSum,
+        totalsupplierSales,
+        totalSupplierPackCost,
+        totalCusGross,
+        totalCustomerPackCost, // <-- NEW: Sum of CustomerPackCost
+    } = useMemo(() => {
+        let totalWeight = 0, totalsupplierSales = 0, totalCommission = 0, totalPacksSum = 0, totalSupplierPackCost = 0, totalCusGross = 0, totalCustomerPackCost = 0;
+        const itemSummary = {};
+
+        supplierDetails.forEach(record => {
+            const weight = parseFloat(record.weight) || 0;
+            const commission = parseFloat(record.commission_amount) || 0;
+            const packs = parseInt(record.packs) || 0;
+            const SupplierTotal = parseFloat(record.SupplierTotal) || 0;
+            const itemName = record.item_name || 'Unknown Item';
+            const rowCusGross = (parseFloat(record?.total) || 0) - (parseFloat(record?.CustomerPackLabour) || 0);
+            const packCost = parseFloat(record?.CustomerPackCost) || 0; // <-- NEW: Get pack cost
+
+            totalWeight += weight;
+            totalsupplierSales += SupplierTotal;
+            totalCommission += commission;
+            totalPacksSum += packs;
+            totalCusGross += rowCusGross;
+            totalCustomerPackCost += packCost; // <-- NEW: Add to total
+
+            if (!itemSummary[itemName]) {
+                itemSummary[itemName] = { totalWeight: 0, totalPacks: 0 };
+            }
+            itemSummary[itemName].totalWeight += weight;
+            itemSummary[itemName].totalPacks += packs;
+        });
+
+        return {
+            totalWeight, totalCommission, amountPayable: totalsupplierSales, itemSummaryData: itemSummary,
+            totalPacksSum, totalsupplierSales, totalSupplierPackCost, totalCusGross,
+            totalCustomerPackCost, // <-- NEW: Return the total
+        };
+    }, [supplierDetails]);
+
+    // 🚀 FIXED: Customizable width bill with center alignment and ultra-clear high-visibility styling
+    const getA4Content = useCallback((currentBillNo, billWidth = "101mm", topMargin = "13mm") => {
+        const date = new Date().toLocaleDateString('si-LK');
+        const time = new Date().toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        const paidAmountValue = parseFloat(payingAmount) || 0;
+        const netPayable = totalsupplierSales - advanceAmount - paidAmountValue + totalCustomerPackCost;
+
+        // Format numbers WITHOUT unnecessary decimal places
+        const formatNumber = (num) => {
+            if (typeof num !== 'number' && typeof num !== 'string') return '0';
+            const number = parseFloat(num);
+            if (isNaN(number)) return '0';
+
+            if (Number.isInteger(number)) {
+                return number.toLocaleString('en-US');
+            }
+
+            const roundedToWhole = Math.round(number);
+            if (Math.abs(number - roundedToWhole) < 0.001) {
+                return roundedToWhole.toLocaleString('en-US');
+            }
+
+            return number.toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            });
+        };
+
+        // ALL SIZES MULTIPLIED BY 0.65 (65% of original)
+        const getStyles = (width) => {
+            const widthNum = parseInt(width);
+
+            let headerFontSize, shopFontSize, normalFontSize, smallFontSize, tinyFontSize;
+            let tableHeaderFontSize, totalRowFontSize, netTotalFontSize;
+
+            if (widthNum <= 58) {
+                headerFontSize = '2.9mm';    // 4.5mm × 0.65
+                shopFontSize = '2.3mm';      // 3.5mm × 0.65
+                normalFontSize = '2.3mm';    // 3.5mm × 0.65
+                smallFontSize = '2.1mm';     // 3.2mm × 0.65
+                tinyFontSize = '2mm';        // 3mm × 0.65
+                tableHeaderFontSize = '2.1mm'; // 3.2mm × 0.65
+                totalRowFontSize = '2.5mm';    // 3.8mm × 0.65
+                netTotalFontSize = '2.9mm';    // 4.5mm × 0.65
+            } else if (widthNum <= 80) {
+                headerFontSize = '3.6mm';    // 5.5mm × 0.65
+                shopFontSize = '2.6mm';      // 4mm × 0.65
+                normalFontSize = '2.6mm';    // 4mm × 0.65
+                smallFontSize = '2.4mm';     // 3.7mm × 0.65
+                tinyFontSize = '2.3mm';      // 3.5mm × 0.65
+                tableHeaderFontSize = '2.4mm'; // 3.7mm × 0.65
+                totalRowFontSize = '2.7mm';    // 4.2mm × 0.65
+                netTotalFontSize = '3.3mm';    // 5mm × 0.65
+            } else {
+                headerFontSize = '4.6mm';    // 7mm × 0.65
+                shopFontSize = '2.9mm';      // 4.5mm × 0.65
+                normalFontSize = '2.7mm';    // 4.2mm × 0.65
+                smallFontSize = '2.6mm';     // 4mm × 0.65
+                tinyFontSize = '2.4mm';      // 3.7mm × 0.65
+                tableHeaderFontSize = '2.6mm'; // 4mm × 0.65
+                totalRowFontSize = '2.9mm';    // 4.5mm × 0.65
+                netTotalFontSize = '3.6mm';    // 5.5mm × 0.65
+            }
+
+            return {
+                containerWidth: width,
+                headerFontSize,
+                shopFontSize,
+                normalFontSize,
+                smallFontSize,
+                tinyFontSize,
+                tableHeaderFontSize,
+                totalRowFontSize,
+                netTotalFontSize,
+                padding: widthNum <= 58 ? '2mm' : '2.6mm',      // 3mm/4mm × 0.65
+                cellPadding: widthNum <= 58 ? '1mm' : '1.3mm'  // 1.5mm/2mm × 0.65
+            };
+        };
+
+        const styles = getStyles(billWidth);
+
+        // Split supplier details into pages with 9 items per page
+        const ITEMS_PER_PAGE = 9;
+
+        const splitItemsIntoPages = (items, itemsPerPage = 9) => {
+            const pages = [];
+            for (let i = 0; i < items.length; i += itemsPerPage) {
+                pages.push(items.slice(i, i + itemsPerPage));
+            }
+            return pages;
+        };
+
+        const itemPages = splitItemsIntoPages(supplierDetails, ITEMS_PER_PAGE);
+
+        // Calculate grand totals once for all pages
+        const grandTotalPacks = supplierDetails.reduce((sum, record) => sum + (parseInt(record.packs) || 0), 0);
+        const grandTotalSales = totalsupplierSales;
+        const grandTotalPackCost = totalCustomerPackCost;
+        const grandAdvanceAmount = advanceAmount;
+        const grandPaidAmount = paidAmountValue;
+        const grandNetPayable = netPayable;
+
+        // Generate HTML for each page
+        const generatePage = (pageItems, pageNumber, isLastPage) => {
+            // Calculate page-specific totals
+            let pageTotalSales = 0;
+            let pageTotalPacks = 0;
+
+            pageItems.forEach(record => {
+                pageTotalSales += parseFloat(record.SupplierTotal) || 0;
+                pageTotalPacks += parseInt(record.packs) || 0;
+            });
+
+            return `
+        <div class="bill-border" style="page-break-after: ${isLastPage ? 'avoid' : 'always'};">
+            ${pageNumber === 1 ? `
+            <div class="header">
+                <div class="shop-name">මහතුන් වෙළඳ සැල</div>
+                <div class="shop-address">දඹුල්ල විශේෂ ආර්ථික මධ්‍යස්ථානය</div>
+                <div class="shop-phone">දුරකථන: 0777672838 / 0714371115</div>
+            </div>
+            
+            <div class="info-row" style="display: flex; flex-wrap: nowrap; gap: 3.3mm; white-space: nowrap;">
+                <div>ගොවියා: ${(selectedSupplier || '').toUpperCase()}</div>
+                <div>අං: ${currentBillNo || ''}</div>
+                <div>දිනය: ${date}</div>
+                <div>${time}</div>
+            </div>
+            ` : `
+            <div class="header-continued">
+                <div class="continued-label">(පිටුව ${pageNumber} / ${itemPages.length} - කරුණාකර දිගටම කියවන්න)</div>
+            </div>
+            `}
+
+            ${itemPages.length > 1 ? `
+            <div style="margin-bottom: 1.3mm; font-size: ${styles.tinyFontSize}; text-align: center; font-weight: bold;">
+                පිටුව ${pageNumber} / ${itemPages.length}
+            </div>
+            ` : ''}
+
+            <table>
+                <colgroup>
+                    <col style="width: 30%">
+                    <col style="width: 10%">
+                    <col style="width: 15%">
+                    <col style="width: 15%">
+                    <col style="width: 15%">
+                    <col style="width: 15%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th style="text-align: left; font-size: ${styles.tableHeaderFontSize};">වර්ගය</th>
+                        <th style="font-size: ${styles.tableHeaderFontSize};">මලු</th>
+                        <th style="text-align: right; font-size: ${styles.tableHeaderFontSize};">බර</th>
+                        <th style="text-align: right; font-size: ${styles.tableHeaderFontSize};">මිල</th>
+                        <th style="text-align: center; font-size: ${styles.tableHeaderFontSize};">ගනු</th>
+                        <th style="text-align: right; font-size: ${styles.tableHeaderFontSize};">එකතුව</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${pageItems.map(record => `
+                        <tr style="page-break-inside: avoid;">
+                            <td style="text-align: left; padding: ${styles.cellPadding}; font-size: ${styles.normalFontSize};">${record.item_name || ''}</td>
+                            <td style="text-align: center; padding: ${styles.cellPadding}; font-size: ${styles.normalFontSize};">${record.packs || 0}</td>
+                            <td class="text-right" style="padding: ${styles.cellPadding}; font-size: ${styles.normalFontSize};">${formatNumber(record.weight)}</td>
+                            <td class="text-right" style="padding: ${styles.cellPadding}; font-size: ${styles.normalFontSize};">${formatNumber(record.SupplierPricePerKg)}</td>
+                            <td style="text-align: center; padding: ${styles.cellPadding}; font-size: ${styles.normalFontSize};">${(record.customer_code || '').toUpperCase()}</td>
+                            <td class="text-right" style="padding: ${styles.cellPadding}; font-size: ${styles.normalFontSize};">${formatNumber(record.SupplierTotal)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+                <tfoot>
+                    <tr style="background: #f0f0f0;">
+                        <td colspan="2" style="font-size: ${styles.smallFontSize}; font-weight: bold; padding: ${styles.cellPadding};">මෙම පිටුවේ එකතුව</td>
+                        <td class="text-right" style="font-size: ${styles.smallFontSize}; font-weight: bold; padding: ${styles.cellPadding};">  </td>
+                        <td style="font-size: ${styles.smallFontSize}; font-weight: bold; padding: ${styles.cellPadding};">  </td>
+                        <td class="text-center" style="font-size: ${styles.smallFontSize}; font-weight: bold; padding: ${styles.cellPadding};">${pageTotalPacks}</td>
+                        <td class="text-right" style="font-size: ${styles.smallFontSize}; font-weight: bold; padding: ${styles.cellPadding};">${formatNumber(pageTotalSales)}</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            ${isLastPage ? `
+            <div class="totals-section">
+                <div class="total-row"><span>මුළු එකතුව:</span><span>රු. ${formatNumber(grandTotalSales)}</span></div>
+                <div class="total-row"><span>මලු වියදම:</span><span>රු. ${formatNumber(grandTotalPackCost)}</span></div>
+                <div class="total-row"><span>අත්තිකාරම්:</span><span style="color: red !important;">රු. -${formatNumber(grandAdvanceAmount)}</span></div>
+                ${grandPaidAmount > 0 ? `<div class="total-row"><span>ගෙවූ මුදල:</span><span>රු. -${formatNumber(grandPaidAmount)}</span></div>` : ''}
+                <div class="net-total">
+                    <span>ගෙවිය යුතු මුදල:</span>
+                    <span>රු. ${formatNumber(grandNetPayable)}</span>
+                </div>
+            </div>
+            
+            <div class="footer">
+                *** ස්තුතියි! නැවත පැමිණෙන්න ***
+                <div style="margin-top: 1mm; font-size: ${styles.tinyFontSize};">${date} | ${time}</div>
+            </div>
+            ` : `
+            <div class="footer" style="margin-top: 2.6mm; text-align: center; font-size: ${styles.smallFontSize}; border-top: 0.3mm dashed #000; padding-top: 1.6mm;">
+                *** කරුණාකර පහත පිටුවට හැරෙන්න ***
+            </div>
+            `}
+        </div>
+    `;
+        };
+
+        // Generate all pages
+        let allPagesHTML = '';
+        if (supplierDetails.length === 0) {
+            allPagesHTML = `
+        <div class="bill-border">
+            <div class="header">
+                <div class="shop-name">මහතුන් වෙළඳ සැල</div>
+                <div class="shop-address">දඹුල්ල විශේෂ ආර්ථික මධ්‍යස්ථානය</div>
+                <div class="shop-phone">දුරකථන: 0777672838 / 0714371115</div>
+            </div>
+            
+            <div class="info-row">
+                <div>කේතය: ${(selectedSupplier || '').toUpperCase()}</div>
+                <div>අංකය: ${currentBillNo || ''}</div>
+                <div>දිනය: ${date}</div>
+                <div>වේලාව: ${time}</div>
+            </div>
+            
+            <div style="text-align: center; padding: 6.5mm; font-size: ${styles.headerFontSize}; font-weight: bold;">
+                අයිතම නොමැත
+            </div>
+            
+            <div class="footer">
+                *** ස්තුතියි! නැවත පැමිණෙන්න ***
+                <div style="margin-top: 1mm; font-size: ${styles.tinyFontSize};">${date} | ${time}</div>
+            </div>
+        </div>
+    `;
+        } else {
+            itemPages.forEach((page, idx) => {
+                allPagesHTML += generatePage(page, idx + 1, idx === itemPages.length - 1);
+            });
+        }
+
+        return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        
+        body { 
+            font-family: 'Iskoola Pota', Arial, sans-serif; 
+            background: #f0f0f0; 
+            padding: 0;
+            margin: 0;
+        }
+
+        .bill-border { 
+            width: ${styles.containerWidth}; 
+            max-width: ${styles.containerWidth};
+            min-width: ${styles.containerWidth};
+            background: white;
+            padding: ${styles.padding};
+            margin: ${topMargin} auto 0 auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            page-break-after: always;
+            page-break-inside: avoid;
+        }
+
+        @media print {
+            body { 
+                background: white; 
+                padding: 0; 
+                margin: 0;
+            }
+            .bill-border { 
+                box-shadow: none; 
+                margin: 0 auto !important;
+                page-break-after: always;
+                page-break-inside: avoid;
+            }
+            @page { 
+                size: ${styles.containerWidth} auto;
+                margin: 0mm;
+            }
+        }
+
+        div, span, p, td, th, strong, .shop-name, .shop-address, .shop-phone, 
+        .info-row, .total-row, .net-total, .footer, .header-continued { 
+            color: #000 !important; 
+            font-weight: bold !important; 
+        }
+
+        .header { 
+            text-align: center; 
+            border-bottom: 0.5mm solid #000; 
+            padding-bottom: 1.6mm; 
+            margin-bottom: 1.6mm; 
+        }
+        
+        .header-continued {
+            text-align: center;
+            border-bottom: 0.3mm solid #000;
+            padding-bottom: 1.3mm;
+            margin-bottom: 1.6mm;
+        }
+        
+        .continued-label {
+            font-size: ${styles.smallFontSize};
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .shop-name { 
+            font-size: ${styles.headerFontSize}; 
+            margin-bottom: 1mm; 
+            font-weight: bold;
+        }
+        .shop-address, .shop-phone { 
+            font-size: ${styles.shopFontSize}; 
+            margin: 0.7mm 0; 
+            font-weight: bold;
+        }
+
+        .info-row { 
+            display: flex; 
+            justify-content: space-between; 
+            margin-bottom: 1.6mm; 
+            padding: 1.3mm; 
+            border: 0.3mm solid #000; 
+            font-size: ${styles.normalFontSize};
+            font-weight: bold;
+        }
+
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 1.6mm;
+            table-layout: fixed;
+        }
+        
+        th { 
+            border: 0.3mm solid #000; 
+            padding: ${styles.cellPadding}; 
+            background: #eee; 
+            font-weight: bold;
+        }
+        
+        td { 
+            border: 0.2mm solid #000; 
+            vertical-align: top;
+            font-weight: bold;
+        }
+
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+
+        .totals-section { 
+            margin-top: 1.6mm; 
+            border-top: 0.3mm solid #000; 
+            padding-top: 1.6mm;
+        }
+        
+        .total-row { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 1mm 0; 
+            font-size: ${styles.totalRowFontSize};
+            font-weight: bold;
+        }
+        
+        .net-total { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 1.6mm 1mm; 
+            border-top: 0.5mm solid #000; 
+            border-bottom: 0.5mm solid #000;
+            font-size: ${styles.netTotalFontSize};
+            margin-top: 1.3mm; 
+            background: #f9f9f9;
+            font-weight: bold;
+        }
+
+        .footer { 
+            margin-top: 2.6mm; 
+            text-align: center; 
+            font-size: ${styles.smallFontSize}; 
+            border-top: 0.3mm dashed #000; 
+            padding-top: 1.6mm; 
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    ${allPagesHTML}
+</body>
+</html>`;
+    }, [selectedSupplier, supplierDetails, totalsupplierSales, advanceAmount, payingAmount, totalPacksSum, totalWeight, totalCustomerPackCost]);
+
+    const getBillContent = useCallback((currentBillNo) => {
+        const date = new Date().toLocaleDateString('si-LK');
+        const mobile = '0777672838/071437115';
+        const is4Inch = billSize === '4inch';
+        const receiptMaxWidth = is4Inch ? '4in' : '350px';
+        const fontSizeBody = '18px';
+        const fontSizeHeader = '18px';
+        const fontSizeTotal = '28px';
+
+        // 🚀 NEW: Calculation for Loan/Partial Payment
+        const paidAmountValue = parseFloat(payingAmount) || 0;
+        const remainingAfterPayment = totalsupplierSales - paidAmountValue;
+
+        const colGroups = `
+    <colgroup>
+        <col style="width:32%;"> 
+        <col style="width:21%;">
+        <col style="width:21%;">
+        <col style="width:26%;">
+    </colgroup>`;
+
+        const formatNumber = (value, maxDecimals = 3) => {
+            if (typeof value !== 'number' && typeof value !== 'string') return '0';
+            const number = parseFloat(value);
+            if (isNaN(number)) return '0';
+            if (Number.isInteger(number)) return number.toLocaleString('en-US');
+            const parts = number.toFixed(maxDecimals).replace(/\.?0+$/, '').split('.');
+            const wholePart = parseInt(parts[0]).toLocaleString('en-US');
+            return parts[1] ? `${wholePart}.${parts[1]}` : wholePart;
+        };
+
+        const detailedItemsHtml = supplierDetails.map(record => {
+            const weight = parseFloat(record.weight) || 0;
+            const packs = parseInt(record.packs) || 0;
+            const price = parseFloat(record.SupplierPricePerKg) || 0;
+            const total = parseFloat(record.SupplierTotal) || 0;
+            const itemName = record.item_name || '';
+            const customerCode = record.customer_code?.toUpperCase() || '';
+
+            return `
+        <tr style="font-size:${fontSizeBody}; font-weight:bold; vertical-align: bottom;">
+            <td style="text-align:left; padding:10px 0; white-space: nowrap;">${itemName}<br>${formatNumber(packs)}</td>
+            <td style="text-align:right; padding:10px 2px; position: relative; left: -70px;">${formatNumber(weight.toFixed(2))}</td>
+            <td style="text-align:right; padding:10px 2px; position: relative; left: -65px;">${formatNumber(price.toFixed(2))}</td>
+            <td style="padding:10px 0; display:flex; flex-direction:column; align-items:flex-end;">
+                <div style="font-size:25px; white-space:nowrap;">${customerCode}</div>
+                <div style="font-weight:900; white-space:nowrap;">${formatNumber(total.toFixed(2))}</div>
+            </td>
+          </tr>`;
+        }).join("");
+
+        const summaryEntries = Object.entries(itemSummaryData);
+        let itemSummaryHtml = '';
+        for (let i = 0; i < summaryEntries.length; i += 2) {
+            const [name1, d1] = summaryEntries[i];
+            const [name2, d2] = summaryEntries[i + 1] || [null, null];
+            const text1 = `${name1}:${formatNumber(d1.totalWeight)}/${formatNumber(d1.totalPacks)}`;
+            const text2 = d2 ? `${name2}:${formatNumber(d2.totalWeight)}/${formatNumber(d2.totalPacks)}` : '';
+            itemSummaryHtml += `<tr><td style="padding:6px; width:50%; font-weight:bold; white-space:nowrap; font-size:14px;">${text1}</td><td style="padding:6px; width:50%; font-weight:bold; white-space:nowrap; font-size:14px;">${text2}</td></tr>`;
+        }
+
+        // 🚀 CALCULATION FOR FINAL NET AMOUNT
+        // We subtract both Advance and any current payment made
+        const netPayable = totalsupplierSales - advanceAmount - paidAmountValue + totalCustomerPackCost;
+
+        return `
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    @page {
+        size: 80mm auto;
+        margin: 0mm;
+    }
+    @media print {
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        html, body {
+            width: 80mm;
+            margin: 0;
+            padding: 0;
+        }
+        div, table, tr, td, tbody, thead, tfoot {
+            page-break-inside: avoid;
+            page-break-after: avoid;
+            page-break-before: avoid;
+        }
+    }
+</style>
+</head>
+<body>
+<div style="width:${receiptMaxWidth}; margin:0 auto; padding:10px; font-family:'Courier New', monospace; color:#000; background:#fff;">
+    <div style="text-align:center; font-weight:bold;">
+        <div style="font-size:24px;">මහතුන් වෙළඳසැල </div>
+        <div style="display:flex; justify-content:center; align-items:center; gap:15px; margin:12px 0;">
+            <span style="border:2.5px solid #000; padding:5px 12px; font-size:22px;">F2-1</span>
+            <div style="font-size:18px;">ගොවියා: <span style="border:2.5px solid #000; padding:5px 10px; font-size:22px;">${selectedSupplier}</span></div>
+        </div>
+      <div style="font-size:16px; white-space: nowrap;">විශේෂ ආර්ථික මධ්‍යස්ථානය දඹුල්ල</div>
+    </div>
+    <div style="font-size:19px; margin-top:10px; padding:0 5px;">
+        <div style="font-weight: bold;">දුර:${mobile}</div>
+        <div style="display:flex; justify-content:space-between; margin-top:3px;">
+            <span>බිල් අංකය:${currentBillNo}</span>
+            <span>දිනය:${date}</span>
+        </div>
+    </div>
+    <hr style="border:none; border-top:2.5px solid #000; margin:10px 0;">
+    <table style="width:100%; border-collapse:collapse; font-size:${fontSizeBody}; table-layout: fixed;">
+        ${colGroups}
+        <thead>
+            <tr style="border-bottom:2.5px solid #000; font-weight:bold;">
+                <th style="text-align:left; padding-bottom:8px; font-size:${fontSizeHeader};">වර්ගය<br>මලු</th>
+                <th style="text-align:right; padding-bottom:8px; font-size:${fontSizeHeader}; position: relative; left: -50px; top: 24px;"> කිලෝ </th>
+                 <th style="text-align:right; padding-bottom:8px; font-size:${fontSizeHeader}; position: relative; left: -45px; top: 24px;">මිල</th>
+                <th style="text-align:right; padding-bottom:8px; font-size:${fontSizeHeader};">කේතය<br>අගය</th>
+              </tr>
+        </thead>
+        <tbody>${detailedItemsHtml}</tbody>
+        <tfoot>
+            <tr style="border-top:2.5px solid #000; font-weight:bold;">
+                <td style="padding-top:12px; font-size:${fontSizeTotal};">${formatNumber(totalPacksSum)}</td>
+                <td colspan="3" style="padding-top:12px; font-size:${fontSizeTotal};"><div style="text-align:right; float:right; white-space:nowrap;">${(totalsupplierSales.toFixed(2))}</div></td>
+              </tr>
+        </tfoot>
+      </table>
+
+    <table style="width:100%; margin-top:20px; font-weight:bold; font-size:22px; padding:0 5px;">
+         <tr>
+          <td style="font-size:15px; white-space:nowrap; position:relative; left:-15px;">මෙම බිලට මුළු අගය:</td>
+          <td style="text-align:right;"><span style="border-bottom:2px solid #000; font-size:${fontSizeTotal}; padding:5px 10px;">${(totalsupplierSales.toFixed(2))}</span></td>
+         </tr>
+        <tr>
+          <td style="font-size:15px; white-space:nowrap; position:relative; left:-15px;">මලු වියදම:</td>
+          <td style="text-align:right;"><span style="font-size:${fontSizeTotal}; padding:5px 10px;">${totalCustomerPackCost.toFixed(2)}</span></td>
+        </tr>
+        
+        ${paidAmountValue > 0 ? `
+        <tr style="font-size:18px;">
+            <td style="font-size:15px; padding-top:10px;">ගෙවූ මුදල (Paid):</td>
+            <td style="text-align:right; padding-top:10px; color:#000;">
+                - ${paidAmountValue.toFixed(2)}
+              </td>
+          </tr>
+        <tr style="font-size:18px;">
+            <td style="font-size:15px; padding-top:5px;">ඉතිරි මුදල (Remaining):</td>
+            <td style="text-align:right; padding-top:5px; color:#000;">
+                ${remainingAfterPayment.toFixed(2)}
+              </td>
+          </tr>
+        <tr><td colspan="2" style="border-top:1px dashed #000; padding: 5px 0;"></td></tr>
+        ` : ''}
+
+        <tr style="font-size:18px;">
+          <td style="font-size:15px; padding-top:5px;">අත්තිකාරම්</td>
+          <td style="text-align:right; padding-top:5px; color:#000;">
+            - ${advanceAmount.toFixed(2)}
+           </td>
+          </tr>
+
+        <tr style="font-weight:900;">
+          <td style="font-size:18px; padding-top:10px;">ශුද්ධ ඉතිරි ශේෂය:</td>
+          <td style="text-align:right; padding-top:10px;">
+            <span style="color:#000; font-size:${fontSizeTotal}; border-bottom:5px double #000; border-top:2px solid #000;">
+              ${netPayable.toFixed(2)}
+            </span>
+           </td>
+        </tr>
+    </table>
+
+    <div style="margin-top:25px; border-top:1px dashed #000; padding-top:10px;"><table style="width:100%; border-collapse:collapse; font-size:14px; text-align:center;">${itemSummaryHtml}</table></div>
+</div>
+</body>
+</html>`;
+    }, [selectedSupplier, supplierDetails, totalPacksSum, totalsupplierSales, itemSummaryData, billSize, advanceAmount, payingAmount, totalCustomerPackCost]);
+
+    const handlePrint = useCallback(async () => {
+        if (!supplierDetails || supplierDetails.length === 0) return;
+
+        // Pause auto-refresh during print process
+        isPrintingOrUpdatingRef.current = true;
+
+        let finalBillNo = selectedBillNo;
+
+        // If it's a new bill (Unprinted), we must finalize and send SMS
+        if (isUnprintedBill) {
+            setIsDetailsLoading(true);
+            try {
+                const response = await api.post('/suppliers/mark-as-printed', {
+                    transaction_ids: supplierDetails.map(r => r.id),
+                    telephone_no: phoneNo,
+                    advance_amount: advanceAmount,
+                    supplier_code: selectedSupplier
+                });
+
+                finalBillNo = response.data.new_bill_no;
+                setSelectedBillNo(finalBillNo);
+
+                if (phoneNo) {
+                    console.log(`Finalized Bill ${finalBillNo}. SMS triggered for ${phoneNo}`);
+                }
+            } catch (err) {
+                console.error('Finalize/SMS Error:', err);
+                alert('Finalize failed. SMS could not be sent.');
+                setIsDetailsLoading(false);
+                isPrintingOrUpdatingRef.current = false;
+                return;
+            } finally {
+                setIsDetailsLoading(false);
+            }
+        } else {
+            // For printed bills, send SMS without finalizing
+            if (phoneNo) {
+                setIsDetailsLoading(true);
+                try {
+                    const smsResponse = await api.post('/suppliers/resend-sms', {
+                        bill_no: selectedBillNo,
+                        telephone_no: phoneNo,
+                        supplier_code: selectedSupplier,
+                        transaction_ids: supplierDetails.map(r => r.id),
+                        advance_amount: advanceAmount,
+                        is_reprint: true
+                    });
+
+                    console.log(`Reprint SMS triggered for ${phoneNo} on bill ${selectedBillNo}`);
+
+                    setPhoneStatus('📱 SMS resent');
+                    setTimeout(() => setPhoneStatus(''), 2000);
+
+                } catch (err) {
+                    console.error('SMS Resend Error:', err);
+                    setPhoneStatus('⚠️ SMS failed');
+                    setTimeout(() => setPhoneStatus(''), 2000);
+                } finally {
+                    setIsDetailsLoading(false);
+                }
+            } else {
+                setPhoneStatus('⚠️ No phone number');
+                setTimeout(() => setPhoneStatus(''), 2000);
+            }
+        }
+
+        // 🎯 ONLY apply top margin for A4 format
+        const isA4 = printFormat === 'a4';
+        const topMargin = "20mm"; // Only used for A4
+
+        // Create content for printing
+        const content = isA4 ? getA4Content(finalBillNo, "155mm", topMargin) : getBillContent(finalBillNo);
+
+        // Create an iframe for printing (hidden) to avoid opening a new window
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.width = '0px';
+        iframe.style.height = '0px';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+
+        const iframeDoc = iframe.contentWindow.document;
+        iframeDoc.open();
+        iframeDoc.write(`
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>Print Bill</title>
+                <style>
+                    /* CRITICAL FIX: Force margins in print */
+                    * {
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                    }
+                    
+                    @media print {
+                        @page {
+                            margin: 0;
+                            size: ${isA4 ? 'A4' : '80mm auto'};
+                        }
+                        body {
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            -webkit-print-color-adjust: exact;
+                            print-color-adjust: exact;
+                        }
+                        /* 🎯 ONLY apply margin-top when printing A4 */
+                        ${isA4 ? `
+                        .print-container {
+                            margin-top: ${topMargin} !important;
+                            padding-top: 0 !important;
+                        }
+                        ` : `
+                        .print-container {
+                            margin-top: 0 !important;
+                            padding-top: 0 !important;
+                        }
+                        `}
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        background: white;
+                        font-family: 'Iskoola Pota', 'Courier New', monospace;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="print-container">
+                    ${content}
+                </div>
+            </body>
+        </html>
+    `);
+        iframeDoc.close();
+
+        // Rest of the function remains the same...
+        // Focus and print the iframe content
+        iframe.contentWindow.focus();
+
+        // Use setTimeout to ensure content is fully loaded
+        setTimeout(() => {
+            iframe.contentWindow.print();
+
+            // Remove iframe after print dialog closes
+            const checkPrintDone = setInterval(() => {
+                try {
+                    if (iframe.contentWindow.document && iframe.contentWindow.document.hasFocus()) {
+                        // Print dialog might still be open
+                    } else {
+                        clearInterval(checkPrintDone);
+                        setTimeout(() => {
+                            if (iframe && iframe.parentNode) {
+                                document.body.removeChild(iframe);
+                            }
+                            // Reload the page after printing
+                            window.location.reload();
+                        }, 500);
+                    }
+                } catch (e) {
+                    // If we can't access the iframe, remove it
+                    clearInterval(checkPrintDone);
+                    setTimeout(() => {
+                        if (iframe && iframe.parentNode) {
+                            document.body.removeChild(iframe);
+                        }
+                        window.location.reload();
+                    }, 500);
+                }
+            }, 1000);
+
+            // Safety timeout - force cleanup after 10 seconds
+            setTimeout(() => {
+                clearInterval(checkPrintDone);
+                if (iframe && iframe.parentNode) {
+                    document.body.removeChild(iframe);
+                }
+                window.location.reload();
+            }, 10000);
+
+            // Re-enable auto-refresh
+            setTimeout(() => {
+                isPrintingOrUpdatingRef.current = false;
+            }, 1000);
+        }, 300);
+
+    }, [supplierDetails, selectedBillNo, isUnprintedBill, phoneNo, advanceAmount, selectedSupplier, getBillContent, getA4Content, printFormat]);
+
+    // --- Keyboard event listener ---
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'F1' || event.keyCode === 112) { event.preventDefault(); return false; }
+            if ((event.key === 'F4' || event.keyCode === 115) && supplierDetails.length > 0 && !isDetailsLoading) {
+                event.preventDefault();
+                handlePrint();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [supplierDetails, handlePrint, isDetailsLoading]);
+
+    //new profile pic view modal
+    const renderImageModal = () => {
+        if (!isImageModalOpen) return null;
+
+        // Helper to format URLs correctly
+        const formatUrl = (path) => {
+            if (!path) return null;
+            return path.startsWith('http') ? path : `https://goviraju.lk/DBS_backend_30500/application/public/storage/${path}`;
+        };
+
+        const onClose = () => setIsImageModalOpen(false);
+
+        return (
+            <div
+                style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}
+                onClick={onClose}
+            >
+                <div
+                    style={{ backgroundColor: '#1f2937', borderRadius: '20px', width: '95%', maxWidth: '1000px', maxHeight: '95vh', padding: '25px', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)', border: '1px solid #4b5563', display: 'flex', flexDirection: 'column' }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {/* Header Area */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #374151', paddingBottom: '15px' }}>
+                        <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: 'white', margin: 0 }}>
+                            {supplierDocs.title} - ලේඛන පරීක්ෂාව
+                        </h2>
+                        <button
+                            onClick={onClose}
+                            style={{ background: '#374151', border: 'none', color: 'white', width: '35px', height: '35px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}
+                        > ✕ </button>
+                    </div>
+
+                    {/* Larger Images Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 1.5fr', gap: '20px', overflowY: 'auto', padding: '5px' }}>
+                        {/* Profile Picture */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <span style={{ color: '#60a5fa', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', textTransform: 'uppercase' }}>ප්‍රධාන රූපය</span>
+                            <div style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', border: '2px solid #3b82f6', backgroundColor: '#111827', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+                                <img src={formatUrl(supplierDocs.profile)} style={{ width: '100%', height: 'auto', display: 'block' }} alt="Profile" />
+                            </div>
+                        </div>
+
+                        {/* NIC Front */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <span style={{ color: '#9ca3af', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', textTransform: 'uppercase' }}>NIC ඉදිරිපස</span>
+                            <div style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', border: '2px solid #4b5563', backgroundColor: '#111827', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+                                {supplierDocs.nic_front ? (
+                                    <img src={formatUrl(supplierDocs.nic_front)} style={{ width: '100%', height: 'auto', maxHeight: '500px', display: 'block', objectFit: 'contain' }} alt="NIC Front" />
+                                ) : (
+                                    <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}>ඡායාරූපයක් නොමැත</div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* NIC Back */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <span style={{ color: '#9ca3af', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', textTransform: 'uppercase' }}>NIC පසුපස</span>
+                            <div style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', border: '2px solid #4b5563', backgroundColor: '#111827', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+                                {supplierDocs.nic_back ? (
+                                    <img src={formatUrl(supplierDocs.nic_back)} style={{ width: '100%', height: 'auto', maxHeight: '500px', display: 'block', objectFit: 'contain' }} alt="NIC Back" />
+                                ) : (
+                                    <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}>ඡායාරූපයක් නොමැත</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Action Area */}
+                    <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #374151', paddingTop: '15px' }}>
+                        <button
+                            onClick={onClose}
+                            style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '10px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer' }}
+                        >Close </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // 🚀 NEW: Edit Modal UI
+    const renderEditModal = () => {
+        if (!editingRecord) return null;
+
+        // Logic to count how many records have the same item name
+        const sameItemCount = supplierDetails.filter(item => item.item_name === editingRecord.item_name).length;
+
+        return (
+            <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000 }}>
+                <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', width: '400px', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+                    <h3 style={{ marginTop: 0, color: '#091d3d', borderBottom: '2px solid #007bff', paddingBottom: '10px' }}>ගනුදෙනුව වෙනස් කරන්න</h3>
+
+                    <div style={{ margin: '15px 0', fontSize: '0.9rem', color: '#666', backgroundColor: '#f8f9fa', padding: '10px', borderRadius: '4px' }}>
+                        <p style={{ margin: '2px 0' }}><strong>බිල් අං:</strong> {editingRecord.bill_no || selectedBillNo}</p>
+                        <p style={{ margin: '2px 0' }}><strong>අයිතමය:</strong> {editingRecord.item_name} | {editingRecord.weight} kg</p>
+                    </div>
+
+                    {/* 🚀 BULK CHECKBOX */}
+                    {sameItemCount > 1 && (
+                        <div style={{ backgroundColor: '#fff3cd', padding: '10px', borderRadius: '4px', marginBottom: '15px', border: '1px solid #ffeeba' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '0.85rem', color: '#856404', fontWeight: 'bold' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={applyToAllSameItems}
+                                    onChange={(e) => setApplyToAllSameItems(e.target.checked)}
+                                    style={{ width: '18px', height: '18px' }}
+                                />
+                                සියලුම "{editingRecord.item_name}" ({sameItemCount}) වෙනස් කරන්න
+                            </label>
+                        </div>
+                    )}
+
+                    {/* Supplier Code Input */}
+                    <div style={{ marginTop: '15px' }}>
+                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#555' }}>නව ගොවි කේතය (Supplier - Optional):</label>
+                        <input
+                            type="text"
+                            placeholder={editingRecord.supplier_code} // Show current code as placeholder
+                            value={newFarmerCode}
+                            onChange={(e) => setNewFarmerCode(e.target.value.toUpperCase())}
+                            style={{ width: '100%', padding: '10px', fontSize: '1rem', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+                            autoFocus
+                        />
+                    </div>
+
+                    {/* Customer Code Input */}
+                    <div style={{ marginTop: '15px' }}>
+                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#555' }}>නව ගැනුම්කරු (Customer - Optional):</label>
+                        <input
+                            type="text"
+                            placeholder={editingRecord.customer_code} // Show current code as placeholder
+                            value={newCustomerCode}
+                            onChange={(e) => setNewCustomerCode(e.target.value.toUpperCase())}
+                            style={{ width: '100%', padding: '10px', fontSize: '1rem', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+                        />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '25px' }}>
+                        <button onClick={handleUpdateFarmer} style={{ flex: 1, padding: '12px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>OK</button>
+                        <button onClick={() => { setEditingRecord(null); setNewFarmerCode(''); setNewCustomerCode(''); setApplyToAllSameItems(true); }} style={{ flex: 1, padding: '12px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // Helper component for rendering supplier codes
+    const SupplierCodeList = ({ items, type, searchTerm }) => {
+        const groupedItems = useMemo(() => {
+            return items.reduce((acc, item) => {
+                const { supplier_code, supplier_bill_no } = item;
+                if (!supplier_code) return acc;
+                if (!acc[supplier_code]) acc[supplier_code] = [];
+                if (type === 'printed' && supplier_bill_no) acc[supplier_code].push(supplier_bill_no);
+                else if (type === 'unprinted' && !acc[supplier_code].includes(supplier_code)) acc[supplier_code].push(supplier_code);
+                return acc;
+            }, {});
+        }, [items, type]);
+
+        const supplierCodes = Object.keys(groupedItems);
+        const buttonBaseStyle = { width: '100%', display: 'block', textAlign: 'left', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', border: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', fontSize: '1rem', marginBottom: '4px', boxSizing: 'border-box' };
+        const buttonStyle = type === 'printed' ? { ...buttonBaseStyle, backgroundColor: '#1E88E5', color: 'white' } : { ...buttonBaseStyle, backgroundColor: '#FF7043', color: 'white' };
+
+        if (items.length === 0) return <p style={{ color: '#6c757d', padding: '10px' }}>{searchTerm ? `No results found` : 'මෙම ප්‍රවර්ගයේ සැපයුම්කරු නොමැත'}</p>;
+
+        return (
+            <div style={listContainerStyle}>
+                {supplierCodes.map(code => (
+                    <div key={code}>
+                        {groupedItems[code].map(id => (
+                            <button key={id} onClick={() => type === 'printed' ? handlePrintedBillClick(code, id) : handleUnprintedBillClick(code, null)} style={buttonStyle}>
+                                <span style={{ display: "block", textAlign: "left", fontSize: "15px", fontWeight: "600" }}>{type === 'printed' ? `${code}-${id}` : `${code}`}</span>
+                            </button>
+                        ))}
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
+    // --- ALWAYS DISPLAYED DETAILS PANEL ---
+    const renderDetailsPanel = () => {
+        const panelContainerStyle = { backgroundColor: '#091d3d', padding: '30px', borderRadius: '12px', maxWidth: '100%', maxHeight: 'calc(100vh - 60px)', overflowY: 'auto', position: 'relative', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)', fontFamily: 'Roboto, Arial, sans-serif', marginTop: '-10px', width: '850px', minHeight: '550px', marginLeft: '0' };
+        const headerStyle = { color: '#007bff', borderBottom: '2px solid #e9ecef', paddingBottom: '10px', marginTop: '0', marginBottom: '20px', fontSize: '1.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
+        const thStyle = { backgroundColor: '#007bff', color: 'white', fontWeight: '600', padding: '6px 8px', textAlign: 'left', position: 'sticky', top: '0', zIndex: 10, fontSize: '0.8rem', whiteSpace: 'nowrap' };
+        const tdStyle = { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #dee2e6', whiteSpace: 'normal' };
+
+        const renderDataRows = () => (
+            <tbody>
+                {supplierDetails.map((record, index) => (
+                    <tr key={record.id || index} style={{ ...getRowStyle(index), cursor: 'pointer' }} onClick={() => setEditingRecord(record)}>
+                        <td style={tdStyle}>{record.bill_no || selectedBillNo}</td>
+                        <td style={tdStyle}>{record.customer_code}</td>
+                        <td style={tdStyle}><strong>{record.item_name}</strong></td>
+                        <td style={tdStyle}>{record.packs}</td>
+                        <td style={tdStyle}>{record.weight}</td>
+                        <td style={tdStyle}>{record.price_per_kg}</td>
+                        <td style={tdStyle}>{record.SupplierPricePerKg}</td>
+                        <td style={tdStyle}>{formatDecimal((record?.total || 0) - (record?.CustomerPackLabour || 0))}</td>
+                        <td style={tdStyle}>{record.SupplierTotal}</td>
+                        <td style={tdStyle}>{record.commission_amount}</td>
+                        <td style={tdStyle}>{record.CustomerPackCost}</td> {/* 🚀 NEW COLUMN */}
+                    </tr>
+                ))}
+                <tr style={{ ...getRowStyle(supplierDetails.length), fontWeight: 'bold', borderTop: '2px solid #000' }}>
+                    <td style={tdStyle} colSpan="3"><strong>TOTALS</strong></td>
+                    <td style={tdStyle}>{totalPacksSum}</td>
+                    <td style={tdStyle}>{totalWeight.toFixed(3)}</td>
+                    <td style={tdStyle}>-</td>
+                    <td style={tdStyle}>-</td>
+                    <td style={tdStyle}>{totalCusGross.toFixed(2)}</td>
+                    <td style={tdStyle}>{totalsupplierSales.toFixed(2)}</td>
+                    <td style={tdStyle}>-</td>
+                    <td style={tdStyle}>{totalCustomerPackCost.toFixed(2)}</td> {/* 🚀 NEW TOTAL ROW */}
+                </tr>
+            </tbody>
+        );
+
+        return (
+            <div style={panelContainerStyle}>
+                <div style={headerStyle}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                        <h2 style={{ fontSize: "1.5rem", color: "white", margin: 0 }}>
+                            ගනුදෙනු විස්තර (බිල් අංකය: <strong>{selectedBillNo || 'N/A'}</strong>)
+                        </h2>
+
+                        {/* TELEPHONE INPUT - DISABLED FOR PRINTED BILLS */}
+                        {/* TELEPHONE INPUT - DISABLED FOR PRINTED BILLS */}
+                        {selectedSupplier && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                    type="text"
+                                    placeholder="දුරකථන අංකය..."
+                                    value={phoneNo}
+                                    onChange={(e) => {
+                                        setPhoneNo(e.target.value);
+                                        setIsPhoneManuallyChanged(true); // 🔄 MARK as manually changed
+                                    }}
+                                    onKeyDown={handlePhoneSubmit}
+                                    disabled={!isUnprintedBill}
+                                    style={{
+                                        padding: '10px 15px',
+                                        borderRadius: '8px',
+                                        border: '2px solid #ffc107',
+                                        fontSize: '1rem',
+                                        width: '200px',
+                                        backgroundColor: !isUnprintedBill ? '#e9ecef' : '#ffffff',
+                                        color: '#000000',
+                                        fontWeight: 'bold',
+                                        outline: 'none',
+                                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+                                        cursor: !isUnprintedBill ? 'not-allowed' : 'text',
+                                        opacity: !isUnprintedBill ? '0.8' : 1
+                                    }}
+                                />
+                                {phoneStatus && (
+                                    <span style={{ fontSize: '0.9rem', color: '#00ff00', fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: '4px' }}>
+                                        {phoneStatus}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 🚀 DISPLAY PROFILE PIC ON THE RIGHT */}
+                    {profilePic && (
+                        <div style={{ marginLeft: '20px' }}>
+                            <img
+                                src={profilePic.startsWith('http') ? profilePic : `https://goviraju.lk/DBS_backend_30500/application/public/storage/${profilePic}`}
+                                alt="Supplier"
+                                onClick={() => setIsImageModalOpen(true)}
+                                style={{
+                                    width: '60px',
+                                    height: '60px',
+                                    borderRadius: '50%',
+                                    border: '2px solid white',
+                                    objectFit: 'cover',
+                                    backgroundColor: '#ccc',
+                                    cursor: 'pointer'
+                                }}
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <div style={{ marginTop: '20px', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '250px', fontSize: '0.9rem', marginBottom: '30px' }}>
+                        <thead>
+                            <tr>
+                                <th style={thStyle}>බිල් අං:</th><th style={thStyle}>ගනුදෙ</th><th style={thStyle}>අයිත</th><th style={thStyle}>අසුරුම්</th><th style={thStyle}>බර</th><th style={thStyle}>ගනුදෙ මිල</th><th style={thStyle}>සැපයුම් මිල</th><th style={thStyle}>ගනුදෙ එක</th><th style={thStyle}>සැපයුම් එක</th><th style={thStyle}>කොමි</th><th style={thStyle}>මලු විය</th> {/* 🚀 NEW HEADER */}
+                            </tr>
+                        </thead>
+                        {selectedSupplier && supplierDetails.length > 0 ? renderDataRows() : <tbody><tr><td colSpan="12" style={{ textAlign: 'center', color: '#6c757d', fontStyle: 'italic', padding: '50px 0' }}>Select a bill to view details</td></tr></tbody>}
+                    </table>
+                </div>
+
+                {selectedSupplier && Object.keys(itemSummaryData).length > 0 && (
+                    <>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0px' }}>
+                            <thead>
+                                <tr><th style={{ ...thStyle, backgroundColor: '#6c757d' }}>අයිතමය නම</th><th style={{ ...thStyle, backgroundColor: '#6c757d' }}>සම්පූර්ණ බර</th><th style={{ ...thStyle, backgroundColor: '#6c757d' }}>මුළු අසුරුම්</th></tr>
+                            </thead>
+                            <tbody>
+                                {Object.keys(itemSummaryData).map((name, i) => (
+                                    <tr key={name} style={getRowStyle(i)}><td style={tdStyle}>{name}</td><td style={tdStyle}>{formatDecimal(itemSummaryData[name].totalWeight, 3)}</td><td style={tdStyle}>{itemSummaryData[name].totalPacks}</td></tr>
+                                ))}
+                            </tbody>
+                        </table>
+
+                        <div style={{ marginTop: '30px', padding: '20px', border: '1px solid #ffffff33', borderRadius: '8px', backgroundColor: '#ffffff11' }}>
+                            <h3 style={{ color: '#ffc107', marginTop: 0, fontSize: '1.2rem' }}>අත්තිකාරම් ඇතුලත් කරන්න (Advance Entry)</h3>
+                            <form onSubmit={handleAdvanceSubmit} style={{ display: 'flex', gap: '15px', alignItems: 'flex-end' }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '0.8rem', color: '#eee', display: 'block', marginBottom: '5px' }}>Supplier Code</label>
+                                    <input
+                                        type="text"
+                                        value={advancePayload.code}
+                                        readOnly
+                                        style={{ width: '100%', padding: '10px', borderRadius: '4px', border: 'none', backgroundColor: '#eee', color: '#000' }}
+                                    />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '0.8rem', color: '#eee', display: 'block', marginBottom: '5px' }}>Amount (රු:)</label>
+                                    <input
+                                        type="number"
+                                        name="advance_amount"
+                                        value={advancePayload.advance_amount}
+                                        onChange={(e) => setAdvancePayload({ ...advancePayload, advance_amount: e.target.value })}
+                                        style={{ width: '100%', padding: '10px', borderRadius: '4px', border: 'none', color: '#000' }}
+                                        placeholder="0.00"
+                                        required
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={advanceLoading || !selectedSupplier}
+                                    style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '40px' }}
+                                >
+                                    {advanceLoading ? 'Saving...' : 'Update Advance'}
+                                </button>
+                            </form>
+                            {advanceStatus.text && (
+                                <p style={{ color: advanceStatus.type === 'success' ? '#28a745' : '#ff4444', marginTop: '10px', fontWeight: 'bold' }}>
+                                    {advanceStatus.text}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* 🚀 NEW: Loan/Payment Input before Print */}
+                        <div style={{ marginTop: '20px', padding: '15px', border: '2px solid #17a2b8', borderRadius: '8px', backgroundColor: '#091d3d' }}>
+                            <label style={{ color: '#17a2b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>ගෙවන මුදල ඇතුලත් කර Print කරන්න (Enter Paying Amount & Enter):</label>
+                            <input
+                                type="number"
+                                value={payingAmount}
+                                onChange={(e) => setPayingAmount(e.target.value)}
+                                onKeyDown={handleLoanSubmit}
+                                placeholder="0.00"
+                                style={{ width: '100%', padding: '12px', fontSize: '1.2rem', fontWeight: 'bold', borderRadius: '6px', border: '2px solid #ffc107' }}
+                            />
+                            {loanStatus && <p style={{ color: 'white', marginTop: '5px' }}>{loanStatus}</p>}
+                        </div>
+                    </>
+                )}
+                <div style={{ textAlign: 'center' }}>
+                    <button style={{ padding: '10px 20px', fontSize: '1.1rem', fontWeight: 'bold', backgroundColor: '#ffc107', color: '#343a40', border: 'none', borderRadius: '6px', cursor: 'pointer', marginTop: '20px', opacity: selectedSupplier ? 1 : 0.5 }} onClick={handlePrint} disabled={!selectedSupplier || isDetailsLoading || supplierDetails.length === 0}>
+                        🖨️ {isDetailsLoading ? 'Processing...' : (selectedSupplier ? (isUnprintedBill ? `Print & Finalize Bill (F4)` : `Print Copy (F4)`) : 'Select a Bill First')}
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const navBarStyle = { backgroundColor: '#343a40', padding: '15px 50px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1030, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' };
+    const reportContainerStyle = { minHeight: '100vh', padding: '90px 50px 50px 50px', fontFamily: 'Roboto, Arial, sans-serif', boxSizing: 'border-box', backgroundColor: '#1ec139ff', marginTop: '-25px' };
+
+    // Only show full page loading on initial load, not on auto-refresh
+    if (isLoading) return <div style={loadingStyle}>Loading Supplier Report...</div>;
+
+    return (
+        <>
+            <nav style={navBarStyle}>
+                <h1 style={{ color: 'white', fontSize: '1.5rem', margin: 0 }}>සැපයුම්කරු වාර්තාව</h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    {/* Auto-refresh indicator with animation when refreshing */}
+                    <div style={{
+                        backgroundColor: isRefreshing ? '#28a745' : '#6c757d',
+                        padding: '5px 10px',
+                        borderRadius: '5px',
+                        fontSize: '0.8rem',
+                        color: 'white',
+                        fontWeight: 'bold',
+                        transition: 'background-color 0.3s ease',
+                        animation: isRefreshing ? 'pulse 1s infinite' : 'none'
+                    }}>
+                        🔄 {isRefreshing ? 'Refreshing...' : 'Auto-refresh (3s)'}
+                    </div>
+
+                    {/* 🚀 NEW: Print Format Selector */}
+                    <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#495057', padding: '5px 10px', borderRadius: '5px', gap: '10px' }}>
+                        <label style={{ color: 'white', fontSize: '0.9rem', fontWeight: 'bold' }}>Format:</label>
+                        <select
+                            value={printFormat}
+                            onChange={(e) => setPrintFormat(e.target.value)}
+                            style={{ padding: '5px', borderRadius: '4px', border: 'none', backgroundColor: 'white', fontWeight: 'bold' }}
+                        >
+                            <option value="thermal">Thermal</option>
+                            <option value="a4">A4 Paper</option>
+                        </select>
+                    </div>
+
+                    {/* 🚀 NEW: Bill Size (Only for Thermal) */}
+                    {printFormat === 'thermal' && (
+                        <button style={{ padding: '8px 15px', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: '#17a2b8', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} onClick={() => setBillSize(billSize === '3inch' ? '4inch' : '3inch')}>
+                            Size: {billSize}
+                        </button>
+                    )}
+
+                    <button style={{ padding: '8px 15px', fontSize: '1rem', fontWeight: 'bold', backgroundColor: '#e83e8c', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} onClick={() => navigate('/suppliers/printed-report')}>සැපයුම්කරු ණය</button>
+                    <button style={{ padding: '10px 20px', fontSize: '1rem', fontWeight: 'bold', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} onClick={goToSalesEntry}>මුල් පිටුව</button>
+                </div>
+            </nav>
+
+            <div style={reportContainerStyle}>
+                <div style={sectionsContainerStyle}>
+                    <div style={printedContainerStyle}>
+                        <div style={printedSectionStyle}>
+                            <h2 style={{ ...printedHeaderStyle, padding: '0 25px 10px 25px', marginBottom: '15px' }}> මුද්‍රණය කළ </h2>
+                            <input type="text" placeholder="🔍 මුද්‍රිත සෙවීම..." value={printedSearchTerm} onChange={(e) => setPrintedSearchTerm(e.target.value)} style={{ ...searchBarStyle, marginBottom: '20px', height: '22px', padding: '12px 25px' }} />
+                            <SupplierCodeList items={filteredPrintedItems} type="printed" searchTerm={printedSearchTerm} />
+                        </div>
+                    </div>
+                    <div style={centerPanelContainerStyle}>{renderDetailsPanel()}</div>
+                    <div style={unprintedContainerStyle}>
+                        <div style={unprintedSectionStyle}>
+                            <h2 style={{ ...unprintedHeaderStyle, padding: '0 25px 10px 25px', marginBottom: '15px', whiteSpace: 'nowrap' }}>මුද්‍රණය නොකළ</h2>
+                            <input type="text" placeholder="🔍 මුද්‍රණ නොකළ සෙවීම..." value={unprintedSearchTerm} onChange={(e) => setUnprintedSearchTerm(e.target.value)} style={{ ...searchBarStyle, marginBottom: '20px', height: '22px', padding: '12px 25px' }} />
+                            <SupplierCodeList items={filteredUnprintedItems} type="unprinted" searchTerm={unprintedSearchTerm} />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {renderImageModal()}
+            {renderEditModal()}
+        </>
+    );
+};
+
+// Add CSS animation for the refresh indicator
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.6; }
+        100% { opacity: 1; }
+    }
+`;
+document.head.appendChild(style);
+
+// --- STYLES ---
+const headerContainerStyle = { padding: '40px 0 30px 0', borderBottom: '1px solid #E0E0E0', marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', backgroundColor: '#1ec139ff' };
+const searchBarStyle = { width: '100%', fontSize: '1rem', borderRadius: '6px', border: '1px solid #E0E0E0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', boxSizing: 'border-box', backgroundColor: 'white' };
+const sectionsContainerStyle = { display: 'flex', justifyContent: 'space-between', gap: '20px' };
+const printedContainerStyle = { width: '200px', flexShrink: 0, marginLeft: '-45px', marginTop: '-10px', border: '2px solid black' };
+const unprintedContainerStyle = { width: '180px', flexShrink: 0, marginRight: '-45px', marginTop: '-10px', marginLeft: '0', border: '2px solid black' };
+const centerPanelContainerStyle = { flex: '3', minWidth: '700px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' };
+const baseSectionStyle = { padding: '25px 0 25px 0', borderRadius: '12px', boxShadow: '0 6px 15px rgba(0, 0, 0, 0.08)', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 210px)' };
+const printedSectionStyle = { ...baseSectionStyle, backgroundColor: '#1ec139ff', borderLeft: '5px solid #FFFFFF', minHeight: '550px' };
+const unprintedSectionStyle = { ...baseSectionStyle, backgroundColor: '#1ec139ff', borderLeft: '5px solid #FFFFFF', minHeight: '550px' };
+const printedHeaderStyle = { color: '#07090ae6', borderBottom: '2px solid #1E88E530', flexShrink: 0, fontSize: '1.3rem' };
+const unprintedHeaderStyle = { color: '#07090ae6', borderBottom: '2px solid #FF704330', flexShrink: 0, fontSize: '1.3rem' };
+const listContainerStyle = { display: 'flex', flexDirection: 'column', gap: '0px', marginTop: '5px', overflowY: 'auto', padding: '0 5px 0 5px', flexGrow: 1, height: '900px' };
+const loadingStyle = { textAlign: 'center', padding: '50px', fontSize: '1.5rem', color: '#1E88E5', backgroundColor: '#1ec139ff' };
+
+export default SupplierReport;

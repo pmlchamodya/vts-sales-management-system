@@ -1,0 +1,383 @@
+import React, { useState, useEffect } from 'react';
+import api from '../../api';
+import Sidebar from '../Sidebar';
+
+const SupplierReport = () => {
+
+    // Report Data
+    const [reportData, setReportData] = useState({ billed: {}, nonBilled: {} });
+    const [filteredReportData, setFilteredReportData] = useState({ billed: {}, nonBilled: {} });
+    const [loading, setLoading] = useState(false);
+
+    // Date Filters
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+
+    // Search Filter
+    const [searchSupplierBillNo, setSearchSupplierBillNo] = useState('');
+
+    // Fetch Report
+    const fetchReport = async () => {
+        try {
+            setLoading(true);
+
+            const response = await api.get('/supplier-report', {
+                params: {
+                    start_date: startDate,
+                    end_date: endDate
+                }
+            });
+
+            setReportData(response.data);
+            setFilteredReportData(response.data);
+        } catch (error) {
+            console.error("Error fetching report:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Filter by Supplier Bill Number
+    const filterBySupplierBillNo = (searchTerm) => {
+        if (!searchTerm.trim()) {
+            setFilteredReportData(reportData);
+            return;
+        }
+
+        const filterGroups = (groups) => {
+            const filtered = {};
+            Object.keys(groups).forEach(supplierCode => {
+                const filteredSales = groups[supplierCode].filter(sale => 
+                    sale.supplier_bill_no && 
+                    sale.supplier_bill_no.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+                if (filteredSales.length > 0) {
+                    filtered[supplierCode] = filteredSales;
+                }
+            });
+            return filtered;
+        };
+
+        setFilteredReportData({
+            billed: filterGroups(reportData.billed),
+            nonBilled: filterGroups(reportData.nonBilled)
+        });
+    };
+
+    // Handle search input change
+    const handleSearchChange = (e) => {
+        const value = e.target.value;
+        setSearchSupplierBillNo(value);
+        filterBySupplierBillNo(value);
+    };
+
+    // Clear search
+    const handleClearSearch = () => {
+        setSearchSupplierBillNo('');
+        setFilteredReportData(reportData);
+    };
+
+    // Reset Function
+    const handleReset = async () => {
+        setStartDate('');
+        setEndDate('');
+        setSearchSupplierBillNo('');
+        setLoading(true);
+
+        const response = await api.get('/supplier-report');
+        setReportData(response.data);
+        setFilteredReportData(response.data);
+        setLoading(false);
+    };
+
+    // Auto Load Default Report on Page Load
+    useEffect(() => {
+        fetchReport();
+    }, []);
+
+    // Calculate Grand Total
+    const calculateGrandTotal = () => {
+        let grandTotal = 0;
+        
+        // Calculate total for non-billed records
+        Object.keys(filteredReportData.nonBilled).forEach(supplierCode => {
+            grandTotal += filteredReportData.nonBilled[supplierCode].reduce((sum, item) => 
+                sum + parseFloat(item.SupplierTotal || 0), 0
+            );
+        });
+        
+        // Calculate total for billed records
+        Object.keys(filteredReportData.billed).forEach(supplierCode => {
+            grandTotal += filteredReportData.billed[supplierCode].reduce((sum, item) => 
+                sum + parseFloat(item.SupplierTotal || 0), 0
+            );
+        });
+        
+        return grandTotal;
+    };
+
+    // Calculate Grand Profit
+    const calculateGrandProfit = () => {
+        let grandProfit = 0;
+        
+        // Calculate profit for non-billed records
+        Object.keys(filteredReportData.nonBilled).forEach(supplierCode => {
+            grandProfit += filteredReportData.nonBilled[supplierCode].reduce((sum, item) => 
+                sum + parseFloat(item.profit || 0), 0
+            );
+        });
+        
+        // Calculate profit for billed records
+        Object.keys(filteredReportData.billed).forEach(supplierCode => {
+            grandProfit += filteredReportData.billed[supplierCode].reduce((sum, item) => 
+                sum + parseFloat(item.profit || 0), 0
+            );
+        });
+        
+        return grandProfit;
+    };
+
+    // Render Table Function
+    const renderTableBlock = (groups, type) => {
+        const groupKeys = Object.keys(groups);
+        if (groupKeys.length === 0) return null;
+
+        return groupKeys.map((key) => (
+            <div key={key} className="mb-5 shadow card border-0">
+                <div className="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3">
+                    <h5 className="mb-0 fw-bold">
+                        සැපයුම්කරු: {key}
+                    </h5>
+                    <span className="badge bg-white text-primary">
+                        වාර්තා ගණන: {groups[key].length}
+                    </span>
+                </div>
+
+                <div className="card-body p-0">
+                    <div className="table-responsive">
+                        <table className="table table-striped table-hover mb-0">
+                            <thead style={{ backgroundColor: '#007bff', color: 'white' }}>
+                                <tr>
+                                    <th>දිනය</th>
+                                    <th>අයිතම කේතය</th>
+                                    <th>අයිතමය</th>
+                                    <th>ගනුදෙනුකරු</th>
+                                    <th className="text-end">බර</th>
+                                    <th className="text-end">මිල</th>
+                                    <th className="text-end">එකතුව</th>
+                                    <th className="text-end">ලාභය</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {groups[key].map((sale, idx) => (
+                                    <tr key={idx}>
+                                        <td>{sale.Date}</td>
+                                        <td>{sale.item_code}</td>
+                                        <td>{sale.item_name}</td>
+                                        <td>{sale.customer_code}</td>
+                                        <td className="text-end">{sale.SupplierWeight}</td>
+                                        <td className="text-end">{sale.SupplierPricePerKg}</td>
+                                        <td className="text-end fw-bold">
+                                            {parseFloat(sale.SupplierTotal || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="text-end text-success fw-bold">{sale.profit}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot className="table-secondary">
+                                <tr>
+                                    <td colSpan="6" className="text-end fw-bold">මුළු එකතුව:</td>
+                                    <td className="text-end fw-bold text-primary">
+                                        {groups[key].reduce((sum, item) => sum + parseFloat(item.SupplierTotal || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="text-end fw-bold text-success">
+                                        {groups[key].reduce((sum, item) => sum + parseFloat(item.profit || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        ));
+    };
+
+    const grandTotal = calculateGrandTotal();
+    const grandProfit = calculateGrandProfit();
+
+    return (
+        <div style={{ display: 'flex' }}>
+            <Sidebar />
+
+            <div style={{
+                marginLeft: '260px',
+                padding: '30px',
+                width: '100%',
+                backgroundColor: '#f5f5f5',
+                minHeight: '100vh'
+            }}>
+
+                {/* DATE FILTER PANEL */}
+                <div className="card shadow mb-4 p-3">
+                    <div className="row g-3 align-items-end">
+                        <div className="col-md-3">
+                            <label className="fw-bold">ආරම්භ දිනය</label>
+                            <input type="date" className="form-control"
+                                value={startDate}
+                                onChange={e => setStartDate(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="col-md-3">
+                            <label className="fw-bold">අවසන් දිනය</label>
+                            <input type="date" className="form-control"
+                                value={endDate}
+                                onChange={e => setEndDate(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="col-md-2">
+                            <button
+                                className="btn btn-primary w-100"
+                                onClick={fetchReport}
+                                disabled={!startDate || !endDate || loading}
+                            >
+                                {loading ? 'Loading...' : 'Search'}
+                            </button>
+                        </div>
+
+                        <div className="col-md-2">
+                            <button className="btn btn-secondary w-100" onClick={handleReset}>
+                                Reset
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Date Summary */}
+                    {startDate && endDate && (
+                        <div className="mt-2 text-muted">
+                            Showing records from <b>{startDate}</b> to <b>{endDate}</b>
+                        </div>
+                    )}
+                </div>
+
+                {/* SEARCH BAR - SUPPLIER BILL NUMBER FILTER */}
+                <div className="card shadow mb-4 p-3">
+                    <div className="row g-3 align-items-center">
+                        <div className="col-md-8">
+                            <label className="fw-bold">සැපයුම්කරු බිල් අංකය අනුව සොයන්න</label>
+                            <div className="input-group">
+                                <input 
+                                    type="text" 
+                                    className="form-control"
+                                    placeholder="සැපයුම්කරු බිල් අංකය ඇතුලත් කරන්න..."
+                                    value={searchSupplierBillNo}
+                                    onChange={handleSearchChange}
+                                />
+                                {searchSupplierBillNo && (
+                                    <button 
+                                        className="btn btn-outline-secondary" 
+                                        onClick={handleClearSearch}
+                                        type="button"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="col-md-4">
+                            {searchSupplierBillNo && (
+                                <div className="alert alert-info mb-0 py-2">
+                                    <i className="bi bi-search"></i> පෙරහන: <strong>{searchSupplierBillNo}</strong>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* TITLE */}
+                <div className="d-flex justify-content-between align-items-center mb-4">
+                    <h2 className="fw-bold">සැපයුම්කරු අනුව වාර්තාව</h2>
+                    <button className="btn btn-success" onClick={() => window.print()}>
+                        Print
+                    </button>
+                </div>
+
+                {/* LOADING */}
+                {loading && (
+                    <div className="text-center p-4">
+                        <div className="spinner-border text-primary"></div>
+                        <div>Loading data...</div>
+                    </div>
+                )}
+
+                {/* DATA */}
+                {!loading && (
+                    <>
+                        {Object.keys(filteredReportData.nonBilled).length > 0 && (
+                            <>
+                                <h4 className="fw-bold">බිල් නොකළ වාර්තා</h4>
+                                {renderTableBlock(filteredReportData.nonBilled, 'nonBilled')}
+                            </>
+                        )}
+
+                        {Object.keys(filteredReportData.billed).length > 0 && (
+                            <>
+                                <hr />
+                                <h4 className="fw-bold">බිල් කළ වාර්තා</h4>
+                                {renderTableBlock(filteredReportData.billed, 'billed')}
+                            </>
+                        )}
+
+                        {Object.keys(filteredReportData.billed).length === 0 &&
+                         Object.keys(filteredReportData.nonBilled).length === 0 && (
+                            <div className="alert alert-info">
+                                {searchSupplierBillNo ? `"${searchSupplierBillNo}" සඳහා වාර්තා හමු නොවිණි` : 'No records found'}
+                            </div>
+                        )}
+
+                        {/* GRAND TOTAL SECTION */}
+                        {(Object.keys(filteredReportData.billed).length > 0 || 
+                          Object.keys(filteredReportData.nonBilled).length > 0) && (
+                            <div className="card shadow mt-4 mb-3 border-0" style={{ backgroundColor: '#f8f9fa' }}>
+                                <div className="card-body">
+                                    <div className="row">
+                                        <div className="col-md-6 offset-md-6">
+                                            <table className="table table-bordered mb-0">
+                                                <tbody>
+                                                    <tr style={{ backgroundColor: '#e9ecef' }}>
+                                                        <td className="fw-bold fs-5">සම්පූර්ණ එකතුව (Grand Total):</td>
+                                                        <td className="text-end fw-bold fs-5 text-primary">
+                                                            {grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </td>
+                                                    </tr>
+                                                    <tr style={{ backgroundColor: '#e9ecef' }}>
+                                                        <td className="fw-bold fs-5">සම්පූර්ණ ලාභය (Grand Profit):</td>
+                                                        <td className="text-end fw-bold fs-5 text-success">
+                                                            {grandProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </td>
+                                                    </tr>
+                                                    {(searchSupplierBillNo || startDate || endDate) && (
+                                                        <tr style={{ backgroundColor: '#fff3cd' }}>
+                                                            <td colSpan="2" className="text-muted small">
+                                                                <i className="bi bi-info-circle"></i> 
+                                                                පෙරහනට අනුව ගණනය කරන ලදී (Filtered results)
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+
+            </div>
+        </div>
+    );
+};
+
+export default SupplierReport;
