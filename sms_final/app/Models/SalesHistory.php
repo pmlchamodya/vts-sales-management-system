@@ -12,7 +12,6 @@ class SalesHistory extends Model
     protected $table = 'sales_histories';
 
     protected $fillable = [
-
         'customer_name',
         'id',
         'customer_code',
@@ -24,11 +23,11 @@ class SalesHistory extends Model
         'price_per_kg',
         'total',
         'packs',
-        'bill_printed', // <-- ADD THIS
+        'bill_printed',
         'Processed', 
         'bill_no',
-        'updated'   ,
-        'is_printed', // <-- ADD THIS
+        'updated',
+        'is_printed',
         'CustomerBillEnteredOn',
         'FirstTimeBillPrintedOn',
         'BillChangedOn',
@@ -51,9 +50,12 @@ class SalesHistory extends Model
         'profit',
         'supplier_bill_printed',
         'supplier_bill_no',
+        'breakdown_history', 
         'bag_real_weight',
-
-
-
+        'credit_transaction',
+        'loan_amount',
+        'loan_taken',
+        'Kuliya',
+        'Nattami',
     ];
 }

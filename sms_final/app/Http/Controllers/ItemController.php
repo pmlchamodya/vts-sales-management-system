@@ -18,6 +18,7 @@ class ItemController extends Controller
         $request->validate([
             'no'             => 'required',
             'type'           => 'required',
+            'Shortkey'       => 'nullable|string',
             'pack_cost'      => 'required|numeric',
             'pack_due'       => 'required|numeric',
             'bag_real_price' => 'required|numeric', // Added validation
@@ -44,6 +45,7 @@ class ItemController extends Controller
         $request->validate([
             'no'             => 'required',
             'type'           => 'required',
+            'Shortkey'       => 'nullable|string',
             'pack_cost'      => 'required|numeric',
             'pack_due'       => 'required|numeric',
             'bag_real_price' => 'required|numeric', // Added validation
