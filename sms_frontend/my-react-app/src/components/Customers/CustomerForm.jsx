@@ -3,7 +3,6 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import axios from "axios";
 
 export default function CustomerForm({ customer, onSubmit, onCancel }) {
-
   const initialState = {
     short_name: "",
     name: "",
@@ -63,7 +62,6 @@ export default function CustomerForm({ customer, onSubmit, onCancel }) {
       if (customer.credit_limit > 0) {
         setShowCreditLimit(true);
       }
-
     } else {
       // Reset when switching to Add mode
       setFormData(initialState);
@@ -89,18 +87,15 @@ export default function CustomerForm({ customer, onSubmit, onCancel }) {
       try {
         if (upperValue.trim()) {
           const response = await axios.get(
-            `https://goviraju.lk/DBS_backend_30500/api/customers/check-short-name/${upperValue}`
+            `https://goviraju.lk/DBS_backend_30500/api/customers/check-short-name/${upperValue}`,
           );
 
           const isDuplicate =
-            response.data.exists &&
-            upperValue !== (customer?.short_name ?? "");
+            response.data.exists && upperValue !== (customer?.short_name ?? "");
 
           setErrors((prev) => ({
             ...prev,
-            short_name: isDuplicate
-              ? "මෙම කෙටි නම දැනටමත් පවතිනවා"
-              : null,
+            short_name: isDuplicate ? "මෙම කෙටි නම දැනටමත් පවතිනවා" : null,
           }));
         }
       } catch (error) {
@@ -182,83 +177,107 @@ export default function CustomerForm({ customer, onSubmit, onCancel }) {
           maxWidth: "900px",
         }}
       >
-        <h2 className="text-center text-white mb-4">
-          {customer
-            ? "පාරිභෝගිකයා සංස්කරණය කරන්න"
-            : "පාරිභෝගිකයා එක් කරන්න"}
+        <h2
+          className="text-center text-white mb-5"
+          style={{ fontSize: "32px", fontWeight: "bold" }}
+        >
+          {customer ? "පාරිභෝගිකයා සංස්කරණය කරන්න" : "පාරිභෝගිකයා එක් කරන්න"}
         </h2>
 
         <form onSubmit={handleSubmit}>
           <div className="row">
-
             {/* SHORT NAME */}
-            <div className="col-md-6 mb-3">
-              <label className="form-label text-white">කෙටි නම *</label>
+            <div className="col-md-6 mb-4">
+              <label
+                className="form-label text-white"
+                style={{ fontSize: "20px", fontWeight: "bold" }}
+              >
+                කෙටි නම *
+              </label>
               <input
                 type="text"
                 name="short_name"
-                className={`form-control ${
+                className={`form-control form-control-lg ${
                   errors.short_name ? "is-invalid" : ""
                 }`}
+                style={{ fontSize: "20px" }}
                 value={formData.short_name}
                 onChange={handleChange}
               />
               {errors.short_name && (
-                <div className="invalid-feedback">
+                <div className="invalid-feedback" style={{ fontSize: "16px" }}>
                   {errors.short_name}
                 </div>
               )}
             </div>
 
             {/* FULL NAME */}
-            <div className="col-md-6 mb-3">
-              <label className="form-label text-white">
+            <div className="col-md-6 mb-4">
+              <label
+                className="form-label text-white"
+                style={{ fontSize: "20px", fontWeight: "bold" }}
+              >
                 සම්පූර්ණ නම *
               </label>
               <input
                 type="text"
                 name="name"
-                className="form-control"
+                className="form-control form-control-lg"
+                style={{ fontSize: "20px" }}
                 value={formData.name}
                 onChange={handleChange}
               />
             </div>
 
             {/* TELEPHONE */}
-            <div className="col-md-6 mb-3">
-              <label className="form-label text-white">
+            <div className="col-md-6 mb-4">
+              <label
+                className="form-label text-white"
+                style={{ fontSize: "20px", fontWeight: "bold" }}
+              >
                 දුරකථන අංකය
               </label>
               <input
                 type="text"
                 name="telephone_no"
-                className="form-control"
+                className="form-control form-control-lg"
+                style={{ fontSize: "20px" }}
                 value={formData.telephone_no}
                 onChange={handleChange}
               />
             </div>
 
             {/* ID NO */}
-            <div className="col-md-6 mb-3">
-              <label className="form-label text-white">
+            <div className="col-md-6 mb-4">
+              <label
+                className="form-label text-white"
+                style={{ fontSize: "20px", fontWeight: "bold" }}
+              >
                 හැඳුනුම්පත් අංකය
               </label>
               <input
                 type="text"
                 name="ID_NO"
-                className="form-control"
+                className="form-control form-control-lg"
+                style={{ fontSize: "20px" }}
                 value={formData.ID_NO}
                 onChange={handleChange}
               />
             </div>
 
             {/* ADDRESS */}
-            <div className="col-md-12 mb-3">
-              <label className="form-label text-white">ලිපිනය</label>
+            <div className="col-md-12 mb-4">
+              <label
+                className="form-label text-white"
+                style={{ fontSize: "20px", fontWeight: "bold" }}
+              >
+                ලිපිනය
+              </label>
               <textarea
                 name="address"
                 rows="2"
-                className="form-control"
+                className="form-control form-control-lg"
+                style={{ fontSize: "20px" }}
                 value={formData.address}
                 onChange={handleChange}
               />
@@ -266,14 +285,18 @@ export default function CustomerForm({ customer, onSubmit, onCancel }) {
 
             {/* FILE UPLOADS */}
             {["profile_pic", "nic_front", "nic_back"].map((field) => (
-              <div key={field} className="col-md-4 mb-3">
-                <label className="form-label text-white small">
+              <div key={field} className="col-md-4 mb-4">
+                <label
+                  className="form-label text-white"
+                  style={{ fontSize: "18px", fontWeight: "bold" }}
+                >
                   {field.replace("_", " ").toUpperCase()}
                 </label>
                 <input
                   type="file"
                   name={field}
-                  className="form-control form-control-sm"
+                  className="form-control form-control-lg"
+                  style={{ fontSize: "16px" }}
                   onChange={handleFileChange}
                   accept="image/*"
                 />
@@ -281,8 +304,8 @@ export default function CustomerForm({ customer, onSubmit, onCancel }) {
                   <img
                     src={previews[field]}
                     alt="Preview"
-                    className="img-thumbnail mt-2"
-                    style={{ height: "80px" }}
+                    className="img-thumbnail mt-3"
+                    style={{ height: "120px", width: "auto" }}
                   />
                 )}
               </div>
@@ -290,13 +313,17 @@ export default function CustomerForm({ customer, onSubmit, onCancel }) {
 
             {/* PASSWORD */}
             {!customer && (
-              <div className="col-md-6 mb-3">
-                <label className="form-label text-white">
+              <div className="col-md-6 mb-4">
+                <label
+                  className="form-label text-white"
+                  style={{ fontSize: "20px", fontWeight: "bold" }}
+                >
                   Password (Unlock Credit Limit)
                 </label>
                 <input
                   type="password"
-                  className="form-control"
+                  className="form-control form-control-lg"
+                  style={{ fontSize: "20px" }}
                   value={password}
                   onChange={handlePassword}
                 />
@@ -305,38 +332,43 @@ export default function CustomerForm({ customer, onSubmit, onCancel }) {
 
             {/* CREDIT LIMIT */}
             {showCreditLimit && (
-              <div className="col-md-6 mb-3">
-                <label className="form-label text-white">
+              <div className="col-md-6 mb-4">
+                <label
+                  className="form-label text-white"
+                  style={{ fontSize: "20px", fontWeight: "bold" }}
+                >
                   ණය සීමාව (Rs.)
                 </label>
                 <input
                   type="number"
                   name="credit_limit"
-                  className="form-control"
+                  className="form-control form-control-lg"
+                  style={{ fontSize: "20px" }}
                   value={formData.credit_limit}
                   onChange={handleChange}
                 />
               </div>
             )}
-
           </div>
 
-          <div className="text-center mt-3">
+          <div className="text-center mt-5">
             <button
               type="submit"
-              className="btn btn-success me-2"
+              className="btn btn-success btn-lg me-3 px-5 py-2"
+              style={{ fontSize: "22px", fontWeight: "bold" }}
               disabled={isSubmitting}
             >
               {isSubmitting
                 ? "සුරකිමින්..."
                 : customer
-                ? "යාවත්කාලීන කරන්න"
-                : "එක් කරන්න"}
+                  ? "යාවත්කාලීන කරන්න"
+                  : "එක් කරන්න"}
             </button>
 
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-secondary btn-lg px-5 py-2"
+              style={{ fontSize: "22px", fontWeight: "bold" }}
               onClick={onCancel}
             >
               අවලංගු කරන්න

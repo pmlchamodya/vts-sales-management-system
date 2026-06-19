@@ -169,8 +169,8 @@ export const ThermalBillHTML = ({
                     <col style="width: 10%;">
                     <col style="width: 15%;">
                     <col style="width: 15%;">
-                    <col style="width: 22%;">
-                    <col style="width: 13%;">
+                    <col style="width: 20%;">
+                    <col style="width: 15%;">
                 </colgroup>
                 <thead>
                     <tr style="border-top: 1px solid #000; border-bottom: 1px solid #000;">
@@ -188,25 +188,30 @@ export const ThermalBillHTML = ({
             </table>
 
             <!-- Totals Table -->
+            <!-- ✅ FIXED: Made this table use the EXACT SAME column widths as the table above -->
             <table style="width: 100%; border-collapse: collapse; font-size: 13px; font-weight: bold; border-top: 1px solid #000; margin-top: 2px;">
                 <colgroup>
                     <col style="width: 25%;">
                     <col style="width: 10%;">
-                    <col style="width: 30%;">
-                    <col style="width: 35%;">
+                    <col style="width: 15%;">
+                    <col style="width: 15%;">
+                    <col style="width: 20%;">
+                    <col style="width: 15%;">
                 </colgroup>
                 <tr>
                     <td></td>
                     <td style="text-align: center; padding-top: 4px;">${totalPacksSum}</td>
-                    <td></td>
+                    <td colspan="2"></td>
                     <td style="text-align: right; padding-top: 4px;">${formatNumber(totalSales)}</td>
+                    <td></td> <!-- ✅ Empty 6th column to match 'අයිතිය' -->
                 </tr>
                 ${
                   totalPackCost > 0
                     ? `
                 <tr>
-                    <td colspan="3" style="text-align: left; padding-top: 2px;">පෙට්ටි / මලු</td>
+                    <td colspan="4" style="text-align: left; padding-top: 2px;">පෙට්ටි / මලු</td>
                     <td style="text-align: right; padding-top: 2px;">${formatNumber(totalPackCost)}</td>
+                    <td></td> <!-- ✅ Empty 6th column -->
                 </tr>`
                     : ""
                 }
@@ -214,18 +219,20 @@ export const ThermalBillHTML = ({
                   totalKuliyaSum > 0
                     ? `
                 <tr>
-                    <td colspan="3" style="text-align: left; padding-top: 2px;">කුලිය</td>
+                    <td colspan="4" style="text-align: left; padding-top: 2px;">කුලිය</td>
                     <td style="text-align: right; padding-top: 2px;">${formatNumber(totalKuliyaSum)}</td>
+                    <td></td> <!-- ✅ Empty 6th column -->
                 </tr>`
                     : ""
                 }
                 <tr>
-                    <td colspan="3"></td>
+                    <td colspan="4"></td>
                     <td style="text-align: right; padding-top: 2px;">
                         <div style="border-top: 1px solid #000; border-bottom: 3px double #000; padding: 2px 0; font-size: 16px;">
                             ${formatNumber(finalGrandTotal)}
                         </div>
                     </td>
+                    <td></td> <!-- ✅ Empty 6th column -->
                 </tr>
             </table>
 

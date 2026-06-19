@@ -37,11 +37,11 @@ const BreakdownDisplay = ({ sale, formatDecimal }) => {
   return (
     <div
       className="mt-4 p-3 bg-white rounded-lg border-2 border-blue-500 shadow-sm"
-      style={{ width: "450px", margin: "10px auto" }}
+      style={{ width: "100%", maxWidth: "450px", margin: "10px auto" }}
     >
-      <div style={{ maxHeight: "150px" }}>
+      <div style={{ maxHeight: "150px", overflowY: "auto" }}>
         <table
-          className="w-full text-xs text-black"
+          className="w-full text-sm text-black"
           style={{ marginTop: "-6px" }}
         >
           <thead>
@@ -54,11 +54,11 @@ const BreakdownDisplay = ({ sale, formatDecimal }) => {
           <tbody>
             {history.map((entry, i) => (
               <tr key={i} className="border-b border-gray-50 last:border-0">
-                <td className="py-1 text-white">{entry.time}</td>
-                <td className="py-1 text-right font-bold text-white">
+                <td className="py-1 text-black">{entry.time}</td>
+                <td className="py-1 text-right font-bold text-black">
                   {formatDecimal(entry.weight)} kg
                 </td>
-                <td className="py-1 text-right font-bold text-white">
+                <td className="py-1 text-right font-bold text-black">
                   {entry.packs}
                 </td>
               </tr>
@@ -66,7 +66,7 @@ const BreakdownDisplay = ({ sale, formatDecimal }) => {
           </tbody>
         </table>
       </div>
-      <div className="mt-2 pt-1 border-t-2 border-blue-200 text-right font-black text-sm text-black">
+      <div className="mt-2 pt-1 border-t-2 border-blue-200 text-right font-black text-lg text-black">
         Total: {formatDecimal(sale.weight)}kg / {sale.packs}p
       </div>
     </div>
@@ -109,6 +109,8 @@ const CustomerList = React.memo(
         });
       return groups;
     };
+
+    // ONLY Strict "N" means unprinted
     const getUnprintedCustomers = () => {
       const customerMap = {};
       allSales
@@ -145,9 +147,9 @@ const CustomerList = React.memo(
         const lowerQuery = searchQuery.toLowerCase();
         groupsArray = groupsArray.filter(
           (g) =>
-            g.customerCode.toLowerCase().startsWith(lowerQuery) ||
-            g.billNo.toString().toLowerCase().startsWith(lowerQuery) ||
-            g.displayText.toLowerCase().startsWith(lowerQuery),
+            (g.customerCode || "").toLowerCase().startsWith(lowerQuery) ||
+            (g.billNo || "").toString().toLowerCase().startsWith(lowerQuery) ||
+            (g.displayText || "").toLowerCase().startsWith(lowerQuery),
         );
       }
       return groupsArray.sort(
@@ -160,7 +162,9 @@ const CustomerList = React.memo(
       let customersArray = Object.values(unprintedCustomerMap);
       if (searchQuery)
         customersArray = customersArray.filter((c) =>
-          c.customerCode.toLowerCase().startsWith(searchQuery.toLowerCase()),
+          (c.customerCode || "")
+            .toLowerCase()
+            .startsWith(searchQuery.toLowerCase()),
         );
       return customersArray.sort(
         (a, b) => new Date(b.latestTimestamp) - new Date(a.latestTimestamp),
@@ -177,21 +181,21 @@ const CustomerList = React.memo(
     return (
       <div
         key={`${type}-${lastUpdate || ""}`}
-        className="w-full shadow-xl rounded-xl overflow-y-auto border border-black"
+        className="w-full shadow-xl rounded-xl overflow-y-auto border border-black flex flex-col"
         style={{
           backgroundColor: "#1ec139ff",
-          maxHeight: "80.5vh",
-          overflowY: "auto",
+          height: "100%",
+          overflow: "hidden",
         }}
       >
         <div
           style={{ backgroundColor: "#006400" }}
-          className="p-1 rounded-t-xl"
+          className="p-2 rounded-t-xl flex-shrink-0"
         >
-          <div className="flex items-center justify-center gap-2 mb-1">
+          <div className="flex items-center justify-center gap-2 mb-2">
             <h2
               className="font-bold text-white whitespace-nowrap"
-              style={{ fontSize: "14px" }}
+              style={{ fontSize: "16px" }}
             >
               {type === "printed" ? "මුද්‍රණය කළ" : "මුද්‍රණය නොකළ"}
             </h2>
@@ -201,8 +205,8 @@ const CustomerList = React.memo(
                 onClick={() => toggleCashFilter()}
                 className="cursor-pointer transition-all border border-white rounded"
                 style={{
-                  width: "18px",
-                  height: "18px",
+                  width: "20px",
+                  height: "20px",
                   backgroundColor: isCashFilterActive
                     ? "#2563eb"
                     : "transparent",
@@ -210,15 +214,15 @@ const CustomerList = React.memo(
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
-                  marginLeft: "90px",
-                  marginTop: "-22px",
+                  marginLeft: "auto",
+                  marginTop: "-25px",
                 }}
               >
                 {isCashFilterActive && (
                   <span
                     style={{
                       color: "white",
-                      fontSize: "12px",
+                      fontSize: "14px",
                       fontWeight: "bold",
                     }}
                   >
@@ -231,20 +235,23 @@ const CustomerList = React.memo(
 
           <input
             type="text"
-            placeholder={`සෙවීම ${type === "printed" ? "බිල්පත් අංකය/කේතය..." : "ගනුදෙනු කේතය..."}`}
+            name="prevent_browser_autofill_search"
+            autoComplete="new-password"
+            placeholder={`සෙවීම...`}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
-            className="px-4 py-0.5 border rounded-xl focus:ring-2 focus:ring-blue-300 uppercase block mx-auto"
-            style={{ width: "169px" }}
+            className="px-3 py-1 border rounded-xl focus:ring-2 focus:ring-blue-300 uppercase block mx-auto w-11/12 text-center font-bold"
+            style={{ fontSize: "14px" }}
           />
         </div>
-        <div className="py-1">
+
+        <div className="py-2 flex-1 overflow-y-auto min-h-0">
           {displayItems.length === 0 ? (
-            <p className="text-gray-700 p-2 text-center text-xs">
+            <p className="text-gray-700 p-2 text-center text-sm font-bold">
               වාර්තා නොමැත.
             </p>
           ) : (
-            <ul className="flex flex-col px-1">
+            <ul className="flex flex-col px-2 w-full gap-1">
               {displayItems.map((item) => {
                 let customerCode, displayText, billSales;
                 if (type === "printed") {
@@ -260,14 +267,15 @@ const CustomerList = React.memo(
                   displayText = item.customerCode;
                   billSales = allSales.filter(
                     (s) =>
-                      s.customer_code === item.customerCode &&
-                      (s.bill_printed === "N" ||
-                        !s.bill_printed ||
-                        s.bill_printed === ""),
+                      (s.customer_code || "").trim().toUpperCase() ===
+                        (item.customerCode || "").trim().toUpperCase() &&
+                      s.bill_printed === "N",
                   );
                 }
                 const isItemSelected = isSelected(item);
-                const buttonText = displayText.replace(/\n/g, " ");
+                const buttonText = displayText
+                  ? displayText.replace(/\n/g, " ")
+                  : "";
 
                 return (
                   <li
@@ -276,7 +284,7 @@ const CustomerList = React.memo(
                         ? `${item.customerCode}-${item.billNo}`
                         : item.customerCode
                     }
-                    className="flex"
+                    className="flex w-full"
                   >
                     <button
                       onClick={() =>
@@ -287,21 +295,7 @@ const CustomerList = React.memo(
                           billSales,
                         )
                       }
-                      className={`py-1 mb-2 rounded-xl border ${isItemSelected ? "border-blue-600" : "bg-gray-50 hover:bg-gray-100 border-gray-200"}`}
-                      style={
-                        isItemSelected
-                          ? {
-                              backgroundColor: "#93C5FD",
-                              paddingLeft: "05px",
-                              width: "280px",
-                              textAlign: "left",
-                            }
-                          : {
-                              paddingLeft: "1px",
-                              width: "280px",
-                              textAlign: "left",
-                            }
-                      }
+                      className={`py-2 mb-1 rounded-lg border w-full text-center px-2 shadow-sm ${isItemSelected ? "border-blue-600 bg-blue-300" : "bg-gray-50 hover:bg-gray-200 border-gray-300"}`}
                     >
                       <span
                         style={{
@@ -309,10 +303,10 @@ const CustomerList = React.memo(
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
-                          textAlign: "inherit",
                           width: "100%",
+                          fontSize: "15px",
                         }}
-                        className={`font-semibold ${isItemSelected ? "text-black" : "text-gray-700"}`}
+                        className={`font-bold ${isItemSelected ? "text-black" : "text-gray-800"}`}
                         title={buttonText}
                       >
                         {buttonText}
@@ -370,6 +364,8 @@ const ItemSummary = ({ sales }) => {
         color: "#000000",
         fontFamily: "'Segoe UI', Tahoma",
         marginTop: "10px",
+        borderRadius: "8px",
+        padding: "10px",
       }}
     >
       <div
@@ -378,7 +374,7 @@ const ItemSummary = ({ sales }) => {
           marginBottom: "10px",
         }}
       >
-        <span style={{ fontSize: "18px", fontWeight: "800" }}>
+        <span style={{ fontSize: "20px", fontWeight: "900" }}>
           Item Summary
         </span>
       </div>
@@ -397,8 +393,8 @@ const ItemSummary = ({ sales }) => {
             <div key={itemName} style={{ flex: 1 }}>
               <span
                 style={{
-                  fontSize: "16px",
-                  fontWeight: "700",
+                  fontSize: "18px",
+                  fontWeight: "800",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -442,63 +438,39 @@ const SalesSummaryFooter = ({ sales, formatDecimal }) => {
   const finalPayable = totals.billTotal + totals.totalBagPrice;
 
   return (
-    <div className="flex flex-row flex-nowrap items-center justify-between w-full p-2 mt-2 rounded-xl border-2 border-blue-500 bg-gray-900 text-white font-bold shadow-lg overflow-hidden">
-      <div className="flex items-center gap-4 px-3 border-r border-gray-700 flex-1 justify-center">
-        <span className="text-gray-400 uppercase text-[10px] whitespace-nowrap">
-          එකතුව:
-        </span>
-        <span
-          className="text-white text-sm whitespace-nowrap"
-          style={{ marginLeft: "6px" }}
-        >
-          {formatDecimal(totals.billTotal)}
-        </span>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        width: "100%",
+        backgroundColor: "#111827",
+        border: "2px solid #3b82f6",
+        borderRadius: "0.75rem",
+        padding: "15px 30px",
+        marginTop: "15px",
+        color: "white",
+        fontSize: "20px",
+        fontWeight: "bold",
+        whiteSpace: "nowrap",
+        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.2)",
+      }}
+    >
+      <div>
+        <span style={{ color: "#9ca3af", marginRight: "8px" }}>එකතුව:</span>
+        {formatDecimal(totals.billTotal)}
       </div>
-      <div
-        className="flex items-center gap-2 px-3 border-r border-gray-700 flex-1 justify-center"
-        style={{ marginLeft: "20px", transform: "translateY(-24px)" }}
-      >
-        <span
-          className="text-gray-400 uppercase text-[10px] whitespace-nowrap"
-          style={{ marginLeft: "140px" }}
-        >
-          බෑග් මිල:
-        </span>
-        <span
-          className="text-white text-sm whitespace-nowrap"
-          style={{ marginLeft: "6px" }}
-        >
-          {formatDecimal(totals.totalBagPrice)}
-        </span>
+      <div>
+        <span style={{ color: "#9ca3af", marginRight: "8px" }}>බෑග් මිල:</span>
+        {formatDecimal(totals.totalBagPrice)}
       </div>
-      <div
-        className="flex flex-row items-center whitespace-nowrap px-4 border-r border-gray-700 h-full ml-auto"
-        style={{ transform: "translateY(-48px)" }}
-      >
-        <span
-          className="text-gray-400 uppercase text-[10px] mr-2"
-          style={{ marginLeft: "310px" }}
-        >
-          කාම්කරු:
-        </span>
-        <span className="font-bold text-sm" style={{ marginLeft: "6px" }}>
-          0
-        </span>
+      <div>
+        <span style={{ color: "#9ca3af", marginRight: "8px" }}>කාම්කරු:</span>0
       </div>
-      <div
-        className="flex flex-row items-center whitespace-nowrap px-4 border-r border-gray-700 h-full ml-auto"
-        style={{ transform: "translateY(-72px)" }}
-      >
-        <span
-          className="text-gray-400 uppercase text-[10px] mr-2"
-          style={{ marginLeft: "480px" }}
-        >
-          ගෙවිය:
-        </span>
-        <span
-          className="font-bold text-sm text-yellow-400"
-          style={{ marginLeft: "6px" }}
-        >
+      <div>
+        <span style={{ color: "#9ca3af", marginRight: "8px" }}>ගෙවිය:</span>
+        <span style={{ color: "#facc15", fontSize: "26px" }}>
           {formatDecimal(finalPayable)}
         </span>
       </div>
@@ -859,11 +831,11 @@ const fieldOrder = [
   "customer_code_select",
   "supplier_code",
   "item_code_select",
+  "kuliya",
+  "nattami",
   "weight",
   "price_per_kg_grid_item",
   "packs",
-  "kuliya",
-  "nattami",
 ];
 
 const skipMap = {
@@ -873,11 +845,12 @@ const skipMap = {
   given_amount: "supplier_code",
   supplier_code: "item_code_select",
   item_code_select: "weight",
+  kuliya: "nattami",
+  nattami: "weight",
+  weight: "price_per_kg_grid_item",
   price_per_kg: "packs",
   price_per_kg_grid_item: "packs",
-  packs: "kuliya",
-  kuliya: "nattami",
-  nattami: null,
+  packs: null,
 };
 
 export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
@@ -887,7 +860,6 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
   const [allSalesRecords, setAllSalesRecords] = useState([]);
   const [isLoadingAllSales, setIsLoadingAllSales] = useState(false);
 
-  // Fetch all sales records
   const fetchAllSalesRecords = async () => {
     try {
       setIsLoadingAllSales(true);
@@ -904,8 +876,19 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   };
 
+  const fetchActiveSales = async () => {
+    try {
+      const res = await api.get(routes.sales);
+      const data = res.data.data || res.data.sales || res.data || [];
+      updateState({ allSales: Array.isArray(data) ? data : [] });
+    } catch (error) {
+      console.error("Failed to sync active sales", error);
+    }
+  };
+
   useEffect(() => {
     fetchAllSalesRecords();
+    fetchActiveSales();
   }, []);
 
   const refs = {
@@ -953,6 +936,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     billSize: "3inch",
     priceManuallyChanged: false,
     gridPricePerKg: "",
+    bulkPrice: "", // ✅ For top "එකවර මිල"
     selectedSaleForBreakdown: null,
     showSavePhoneButton: false,
     isTelephoneValid: false,
@@ -1008,7 +992,6 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     currentUser,
   } = state;
 
-  // Combine sales records for bulk printing
   const combineSalesForPrinting = (salesData) => {
     const combinedMap = new Map();
 
@@ -1213,6 +1196,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
       if (response.data.success) {
         await fetchAllSalesRecords();
+        await fetchActiveSales();
         window.location.reload();
       } else {
         throw new Error(response.data.message || "Update failed");
@@ -1263,10 +1247,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         (s) => s.id && s.bill_printed !== "Y" && s.bill_printed !== "N",
       ),
       printedSales: allSales.filter((s) => s.bill_printed === "Y"),
-      unprintedSales: allSales.filter(
-        (s) =>
-          s.bill_printed === "N" || !s.bill_printed || s.bill_printed === "",
-      ),
+      unprintedSales: allSales.filter((s) => s.bill_printed === "N"),
     }),
     [allSales],
   );
@@ -1282,12 +1263,12 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         )
         .map((s) => s.customer_code);
       const byCode = allCustomers.filter((code) =>
-        code.toLowerCase().includes(lowerQuery),
+        (code || "").toLowerCase().includes(lowerQuery),
       );
       return [...new Set([...byBillNo, ...byCode])];
     }
     return allCustomers.filter((code) =>
-      code.toLowerCase().includes(lowerQuery),
+      (code || "").toLowerCase().includes(lowerQuery),
     );
   };
 
@@ -1300,37 +1281,50 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     [unprintedSales, searchQueries.unprinted],
   );
 
+  // ✅ FIXED: Correctly ensures newly submitted sales don't disappear before F5
   const displayedSales = useMemo(() => {
-    let sales = newSales;
+    let sales = [];
 
-    if (selectedUnprintedCustomer) {
-      sales = [
-        ...sales,
-        ...unprintedSales.filter(
-          (s) => s.customer_code === selectedUnprintedCustomer,
-        ),
-      ];
-    } else if (selectedPrintedCustomer) {
+    if (selectedPrintedCustomer) {
       if (selectedPrintedCustomer.includes("-")) {
         const [cCode, bNo] = selectedPrintedCustomer.split("-");
-        sales = [
-          ...sales,
-          ...printedSales.filter(
-            (s) =>
-              s.customer_code === cCode && String(s.bill_no) === String(bNo),
-          ),
-        ];
+        sales = printedSales.filter(
+          (s) =>
+            (s.customer_code || "").trim().toUpperCase() ===
+              cCode.trim().toUpperCase() && String(s.bill_no) === String(bNo),
+        );
       } else {
-        sales = [
-          ...sales,
-          ...printedSales.filter(
-            (s) => s.customer_code === selectedPrintedCustomer,
-          ),
-        ];
+        sales = printedSales.filter(
+          (s) =>
+            (s.customer_code || "").trim().toUpperCase() ===
+            selectedPrintedCustomer.trim().toUpperCase(),
+        );
+      }
+    } else if (selectedUnprintedCustomer) {
+      const safeSelectedUnprinted = selectedUnprintedCustomer
+        .trim()
+        .toUpperCase();
+
+      const filteredUnprinted = unprintedSales.filter(
+        (s) =>
+          (s.customer_code || "").trim().toUpperCase() ===
+          safeSelectedUnprinted,
+      );
+      sales = [...newSales, ...filteredUnprinted];
+    } else {
+      sales = newSales;
+    }
+
+    const uniqueSales = [];
+    const map = new Map();
+    for (const item of sales) {
+      if (!map.has(item.id)) {
+        map.set(item.id, true);
+        uniqueSales.push(item);
       }
     }
 
-    return sales.slice().reverse();
+    return uniqueSales.slice().reverse();
   }, [
     newSales,
     unprintedSales,
@@ -1514,17 +1508,13 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   }, [formData.supplier_code, suppliers]);
 
+  // 🟢 CALCULATE TOTAL
   useEffect(() => {
     const w = parseFloat(formData.weight) || 0;
     const p = parseFloat(formData.price_per_kg) || 0;
     const total = w * p;
     setFormData((prev) => ({ ...prev, total: Number(total.toFixed(2)) }));
-  }, [
-    formData.weight,
-    formData.price_per_kg,
-    formData.packs,
-    formData.pack_due,
-  ]);
+  }, [formData.weight, formData.price_per_kg, formData.packs]);
 
   useEffect(() => {
     const handleWindowFocus = () =>
@@ -1549,6 +1539,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         : null,
       selectedPrintedCustomer: null,
       customerSearchInput: "",
+      bulkPrice: "", // Reset bulk price when changing customer
     });
     const existingGivenAmount =
       allSales.find((s) => s.customer_code === short)?.given_amount || "";
@@ -1560,17 +1551,21 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }));
     fetchLoanAmount(short);
     updateState({ isManualClear: false });
+
+    // Goes to Supplier Input
     setTimeout(() => {
-      refs.price_per_kg.current?.focus();
-      refs.price_per_kg.current?.select();
+      refs.supplier_code.current?.focus();
+      refs.supplier_code.current?.select();
     }, 100);
   };
 
   const handleInputChange = (field, value) => {
     if (field === "price_per_kg") {
-      setFormData((prev) => ({ ...prev, [field]: value }));
-      updateState({ priceManuallyChanged: true });
+      // ✅ FIXED: Top "එකවර මිල" sets its own state, but DOES NOT override the bottom input immediately
+      updateState({ bulkPrice: value });
     } else if (field === "price_per_kg_grid_item") {
+      // ✅ FIXED: Bottom "මිල" updates ONLY the active form, leaving bulkPrice alone
+      setFormData((prev) => ({ ...prev, price_per_kg: value }));
       updateState({ gridPricePerKg: value, priceManuallyChanged: true });
     } else if (field === "nattami") {
       setFormData((prev) => ({ ...prev, [field]: value }));
@@ -1644,17 +1639,21 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       const fetchedPackDue = parseFloat(item?.pack_due) || 0;
       const fetchedPackCost = parseFloat(item?.pack_cost) || 0;
 
+      // ✅ Use Bulk Price if it has a value, otherwise fall back to item price
+      const priceToUse = state.bulkPrice !== "" ? state.bulkPrice : "";
+
       setFormData((prev) => ({
         ...prev,
         item_code: item.no,
         item_name: item.type,
         pack_due: fetchedPackDue,
+        price_per_kg: priceToUse, // Set the form price to bulk price if exists
       }));
 
       updateState({
         packCost: fetchedPackCost,
         itemSearchInput: "",
-        gridPricePerKg: "",
+        gridPricePerKg: priceToUse, // Set grid display price to bulk price if exists
       });
 
       setTimeout(() => refs.weight.current?.focus(), 100);
@@ -1664,8 +1663,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         item_code: "",
         item_name: "",
         pack_due: "",
+        price_per_kg: "",
       }));
-      updateState({ packCost: 0, itemSearchInput: "" });
+      updateState({ packCost: 0, itemSearchInput: "", gridPricePerKg: "" });
     }
   };
 
@@ -1694,22 +1694,28 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     let selectionKey = customerCode;
     if (isPrinted && billNo) selectionKey = `${customerCode}-${billNo}`;
     const isCurrentlySelected = isPrinted
-      ? selectedPrintedCustomer === selectionKey
-      : selectedUnprintedCustomer === selectionKey;
+      ? state.selectedPrintedCustomer === selectionKey
+      : state.selectedUnprintedCustomer === selectionKey;
 
-    if (isPrinted) {
+    if (isCurrentlySelected) {
+      handleClearForm(true);
       updateState({
-        selectedPrintedCustomer: isCurrentlySelected ? null : selectionKey,
-        selectedUnprintedCustomer: null,
-        currentBillNo: isCurrentlySelected ? null : billNo,
-      });
-    } else {
-      updateState({
-        selectedUnprintedCustomer: isCurrentlySelected ? null : selectionKey,
         selectedPrintedCustomer: null,
-        currentBillNo: null,
+        selectedUnprintedCustomer: null,
       });
+      return;
     }
+
+    updateState({
+      selectedPrintedCustomer: isPrinted ? selectionKey : null,
+      selectedUnprintedCustomer: !isPrinted ? selectionKey : null,
+      currentBillNo: isPrinted ? billNo : null,
+      editingSaleId: null,
+      isManualClear: false,
+      customerSearchInput: "",
+      priceManuallyChanged: false,
+      bulkPrice: "", // Clear bulk price
+    });
 
     const customer = customers.find(
       (x) =>
@@ -1717,70 +1723,63 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         String(customerCode).toUpperCase(),
     );
 
-    if (!isCurrentlySelected) {
-      const totals = salesRecords.reduce(
-        (acc, s) => {
-          const weight = parseFloat(s.weight) || 0;
-          const price = parseFloat(s.price_per_kg) || 0;
-          const packs = parseFloat(s.packs) || 0;
-          const pCost = parseFloat(s.CustomerPackCost) || 0;
+    const totals = salesRecords.reduce(
+      (acc, s) => {
+        const weight = parseFloat(s.weight) || 0;
+        const price = parseFloat(s.price_per_kg) || 0;
+        const packs = parseFloat(s.packs) || 0;
+        const pCost = parseFloat(s.CustomerPackCost) || 0;
 
-          acc.billTotal += weight * price;
-          acc.totalBagPrice += packs * pCost;
+        acc.billTotal += weight * price;
+        acc.totalBagPrice += packs * pCost;
 
-          return acc;
-        },
-        { billTotal: 0, totalBagPrice: 0, totalLabour: 0 },
-      );
+        return acc;
+      },
+      { billTotal: 0, totalBagPrice: 0 },
+    );
 
-      const calculatedFinal = totals.billTotal + totals.totalBagPrice;
+    const calculatedFinal = totals.billTotal + totals.totalBagPrice;
+    let fetchedGivenAmount = calculatedFinal.toFixed(2);
 
+    if (isPrinted) {
       try {
-        let fetchedGivenAmount = "";
-        if (isPrinted) {
-          try {
-            const response = await api.get(
-              `${routes.getCustomerGivenAmount}/${customerCode}`,
-            );
-            fetchedGivenAmount =
-              response.data?.given_amount ?? calculatedFinal.toFixed(2);
-          } catch (error) {
-            fetchedGivenAmount =
-              salesRecords[0]?.given_amount || calculatedFinal.toFixed(2);
-          }
-        }
-
-        setFormData({
-          ...initialFormData,
-          customer_code: customerCode,
-          customer_name: customer?.name || "",
-          telephone_no: customer?.telephone_no || "",
-          given_amount: fetchedGivenAmount,
-        });
-
-        fetchLoanAmount(customerCode);
-        setTimeout(() => refs.supplier_code.current?.focus(), 50);
+        const response = await api.get(
+          `${routes.getCustomerGivenAmount}/${customerCode}`,
+        );
+        fetchedGivenAmount = response.data?.given_amount ?? fetchedGivenAmount;
       } catch (error) {
-        setFormData({
-          ...initialFormData,
-          customer_code: customerCode,
-          customer_name: customer?.name || "",
-          telephone_no: customer?.telephone_no || "",
-          given_amount: calculatedFinal.toFixed(2),
-        });
-        fetchLoanAmount(customerCode);
+        fetchedGivenAmount =
+          salesRecords[0]?.given_amount || fetchedGivenAmount;
       }
     } else {
-      handleClearForm();
+      fetchedGivenAmount =
+        salesRecords[salesRecords.length - 1]?.given_amount ||
+        fetchedGivenAmount;
     }
 
-    updateState({
-      editingSaleId: null,
-      isManualClear: false,
-      customerSearchInput: "",
-      priceManuallyChanged: false,
-      gridPricePerKg: "",
+    const lastSale =
+      salesRecords.length > 0 ? salesRecords[salesRecords.length - 1] : {};
+
+    setFormData({
+      ...initialFormData,
+      customer_code: customerCode,
+      customer_name: customer?.name || "",
+      telephone_no: customer?.telephone_no || "",
+      given_amount: fetchedGivenAmount,
+      supplier_code: lastSale.supplier_code || "",
+      item_code: lastSale.item_code || "",
+      item_name: lastSale.item_name || "",
+      weight: lastSale.weight || "",
+      price_per_kg: lastSale.price_per_kg || "",
+      packs: lastSale.packs || "",
+      kuliya: lastSale.Kuliya || "",
+      nattami: lastSale.Nattami || "",
     });
+
+    updateState({ gridPricePerKg: lastSale.price_per_kg || "" });
+
+    fetchLoanAmount(customerCode);
+    setTimeout(() => refs.supplier_code.current?.focus(), 50);
   };
 
   const handleImageClick = (entityType) => {
@@ -1838,6 +1837,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         isManualClear: true,
         priceManuallyChanged: false,
         gridPricePerKg: "",
+        bulkPrice: "",
         selectedSaleForBreakdown: null,
       });
 
@@ -1879,6 +1879,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       isManualClear: false,
       priceManuallyChanged: false,
       gridPricePerKg: sale.price_per_kg || "",
+      bulkPrice: "", // Clear bulk price when editing specific item
       selectedSaleForBreakdown: sale,
     });
 
@@ -1919,6 +1920,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       supplierSearchInput: "",
       priceManuallyChanged: false,
       gridPricePerKg: "",
+      bulkPrice: "",
       isGivenAmountManuallyTouched: false,
       selectedSaleForBreakdown: null,
       ...(clearBillNo && { currentBillNo: null }),
@@ -1934,7 +1936,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     try {
       await api.delete(`${routes.sales}/${saleId}`);
       await fetchAllSalesRecords();
-      updateState({ allSales: allSales.filter((s) => s.id !== saleId) });
+      await fetchActiveSales();
       if (editingSaleId === saleId) handleClearForm();
     } catch (error) {
       updateState({
@@ -1988,19 +1990,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
       const results = await Promise.all(updatePromises);
       updateState({ isGivenAmountManuallyTouched: false });
+      await fetchActiveSales();
 
       const updatedSalesFromApi = results.map((response) => response.data.sale);
-      const updatedSalesMap = {};
-      updatedSalesFromApi.forEach((sale) => {
-        updatedSalesMap[sale.id] = sale;
-      });
-
-      updateState({
-        allSales: allSales.map((s) =>
-          updatedSalesMap[s.id] ? updatedSalesMap[s.id] : s,
-        ),
-      });
-
       return updatedSalesFromApi;
     } catch (error) {
       updateState({
@@ -2010,42 +2002,10 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   };
 
-  const buildFullReceiptHTML = (
-    salesData,
-    billNo,
-    customerName,
-    mobile,
-    globalLoanAmount = 0,
-    billSize = "3inch",
-  ) => {
-    return ThermalBillHTML({
-      salesData,
-      billNo,
-      customerName,
-      mobile,
-      globalLoanAmount,
-      billSize,
-    });
-  };
-
-  const buildA4ReceiptHTML = (
-    salesData,
-    billNo,
-    customerName,
-    mobile,
-    globalLoanAmount = 0,
-  ) => {
-    return A4BillHTML({
-      salesData,
-      billNo,
-      customerName,
-      mobile,
-      globalLoanAmount,
-    });
-  };
-
   const handlePrintAndClear = async () => {
-    let salesData = displayedSales.filter((s) => s.id);
+    let salesData = displayedSales.filter(
+      (s) => s.customer_code && s.item_code,
+    );
 
     if (!salesData.length) {
       alert("මුද්‍රණය කිරීමට දත්ත නොමැත!");
@@ -2095,9 +2055,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         console.warn("Loan fetch failed");
       }
 
-      let idsToMark = salesData.map((s) => s.id);
+      let idsToMark = salesData.map((s) => s.id).filter((id) => id);
       if (shouldCombine) {
-        idsToMark = printData.flatMap((s) => s.original_ids);
+        idsToMark = printData.flatMap((s) => s.original_ids).filter((id) => id);
       }
 
       const printResponse = await api.post(routes.markPrinted, {
@@ -2116,30 +2076,28 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
       let receiptHtml;
       if (printMode === "a4") {
-        receiptHtml = buildA4ReceiptHTML(
-          printData,
+        receiptHtml = A4BillHTML({
+          salesData: printData,
           billNo,
           customerName,
           mobile,
-          currentLoan,
-        );
+          globalLoanAmount: currentLoan,
+        });
       } else {
-        receiptHtml = buildFullReceiptHTML(
-          printData,
+        receiptHtml = ThermalBillHTML({
+          salesData: printData,
           billNo,
           customerName,
           mobile,
-          currentLoan,
-          state.billSize,
-        );
+          globalLoanAmount: currentLoan,
+          billSize: state.billSize,
+        });
       }
 
+      await fetchActiveSales();
+      await fetchAllSalesRecords();
+
       updateState({
-        allSales: allSales.map((s) =>
-          idsToMark.includes(s.id)
-            ? { ...s, bill_printed: "Y", bill_no: billNo }
-            : s,
-        ),
         selectedPrintedCustomer: null,
         selectedUnprintedCustomer: null,
         isPrinting: false,
@@ -2162,7 +2120,6 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
           printWindow.print();
           setTimeout(() => {
             printWindow.close();
-            window.location.reload();
           }, 1000);
         }, 100);
       };
@@ -2173,29 +2130,43 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   };
 
+  // ✅ FIXED: Optimistic UI Update completely without relying on response delay
   const handleMarkAllProcessed = async () => {
-    const salesToProcess = [...newSales, ...unprintedSales];
-    if (salesToProcess.length === 0) return;
+    const salesToProcess = displayedSales.filter(
+      (s) => s.id && s.bill_printed !== "Y",
+    );
+
+    if (salesToProcess.length === 0) {
+      handleClearForm(true);
+      updateState({
+        selectedUnprintedCustomer: null,
+        selectedPrintedCustomer: null,
+      });
+      setTimeout(() => refs.customer_code_input.current?.focus(), 100);
+      return;
+    }
+
+    // Instantly reflect change on UI so no refresh is needed
+    updateState({
+      allSales: allSales.map((s) =>
+        salesToProcess.some((ps) => ps.id === s.id)
+          ? { ...s, bill_printed: "N" }
+          : s,
+      ),
+      selectedUnprintedCustomer: null,
+      selectedPrintedCustomer: null,
+    });
+    handleClearForm(true);
+    setTimeout(() => refs.customer_code_input.current?.focus(), 100);
+
     try {
       const response = await api.post(routes.markAllProcessed, {
         sales_ids: salesToProcess.map((s) => s.id),
       });
+
       if (response.data.success) {
-        updateState({
-          allSales: allSales.map((s) =>
-            salesToProcess.some((ps) => ps.id === s.id)
-              ? { ...s, bill_printed: "N" }
-              : s,
-          ),
-        });
-        handleClearForm();
-        updateState({
-          selectedUnprintedCustomer: null,
-          selectedPrintedCustomer: null,
-        });
-        [50, 100, 150, 200, 250].forEach((timeout) =>
-          setTimeout(() => refs.customer_code_input.current?.focus(), timeout),
-        );
+        fetchActiveSales();
+        fetchAllSalesRecords();
       }
     } catch (err) {
       console.error("Failed to mark sales as processed:", err.message);
@@ -2268,6 +2239,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         }
       }
 
+      const activePrice = parseFloat(formData.price_per_kg) || 0;
+
       const payload = {
         supplier_code: currentSupplierCode.toUpperCase(),
         customer_code: customerCode,
@@ -2275,7 +2248,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         item_code: formData.item_code,
         item_name: formData.item_name,
         weight: parseFloat(formData.weight) || 0,
-        price_per_kg: parseFloat(formData.price_per_kg) || 0,
+        price_per_kg: activePrice,
         pack_due: parseFloat(formData.pack_due) || 0,
         total: parseFloat(formData.total) || 0,
         packs: parseFloat(formData.packs) || 0,
@@ -2292,15 +2265,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       const url = isEditing ? `${routes.sales}/${editingSaleId}` : routes.sales;
       const method = isEditing ? "put" : "post";
 
-      const response = await api[method](url, payload);
-
-      let updatedSales = response.data.sales || [
-        response.data.sale || response.data.data || response.data,
-      ];
-      const updatedIds = updatedSales.map((s) => s.id);
-      const newAllSales = allSales
-        .filter((s) => !updatedIds.includes(s.id))
-        .concat(updatedSales);
+      await api[method](url, payload);
 
       setFormData({
         ...initialFormData,
@@ -2309,15 +2274,21 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         telephone_no: currentTelephone,
         supplier_code: currentSupplierCode,
       });
+
       updateState({
-        allSales: newAllSales,
         editingSaleId: null,
         isManualClear: false,
         isSubmitting: false,
         priceManuallyChanged: false,
         gridPricePerKg: "",
+        ...(!isEditing &&
+          !billPrintedStatus && {
+            selectedUnprintedCustomer: customerCode,
+            selectedPrintedCustomer: null,
+          }),
       });
 
+      await fetchActiveSales();
       await fetchAllSalesRecords();
 
       if (refs.supplier_code.current) {
@@ -2360,7 +2331,12 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       }
 
       if (currentFieldName === "nattami") {
-        await handleSubmit(e);
+        setTimeout(() => {
+          if (refs.weight.current) {
+            refs.weight.current.focus();
+            refs.weight.current.select();
+          }
+        }, 50);
         return;
       }
 
@@ -2467,18 +2443,13 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       }
 
       if (currentFieldName === "packs") {
-        setTimeout(() => {
-          if (refs.kuliya.current) {
-            refs.kuliya.current.focus();
-            refs.kuliya.current.select();
-          }
-        }, 50);
+        await handleSubmit(e);
         return;
       }
 
       let nextFieldName = skipMap[currentFieldName];
 
-      if (!nextFieldName && currentFieldName !== "nattami") {
+      if (!nextFieldName && currentFieldName !== "packs") {
         const currentIndex = fieldOrder.indexOf(currentFieldName);
         let nextIndex = currentIndex + 1;
         while (
@@ -2541,7 +2512,6 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   };
 
-  // MUST PUT ALL USEEFFECTS THAT USE THESE FUNCTIONS AT THE BOTTOM TO AVOID REFERENCE ERRORS!
   useEffect(() => {
     const handleShortcut = (e) => {
       if (e.key === "F10") {
@@ -2554,7 +2524,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       }
       if (e.key === "F1") {
         e.preventDefault();
-        handlePrintAndClear(); // Now works perfectly
+        handlePrintAndClear();
       } else if (e.key === "F5") {
         e.preventDefault();
         if (typeof handleMarkAllProcessed === "function")
@@ -2563,7 +2533,15 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [displayedSales, newSales, selectedPrintedCustomer]);
+  }, [
+    displayedSales,
+    newSales,
+    selectedPrintedCustomer,
+    selectedUnprintedCustomer,
+    state.isBulkPrintEnabled,
+    formData,
+    allSales,
+  ]);
 
   const salesTotal = displayedSales.reduce(
     (sum, s) =>
@@ -2585,8 +2563,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
   return (
     <div
-      className="sales-layout"
-      style={{ maxWidth: "1400px", margin: "0 auto" }}
+      className="sales-layout w-full"
+      style={{ width: "100%", margin: "0 auto", padding: "0" }}
     >
       {isLoading && (
         <div className="fixed top-0 left-0 right-0 bg-blue-500 text-white py-1 text-center text-sm z-50">
@@ -2599,24 +2577,28 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         </div>
       )}
 
+      {/* ✨ CSS GRID WRAPPER FOR PERFECT FULL SCREEN FILL ✨ */}
       <div
-        className="three-column-layout"
+        className="three-column-layout w-full"
         style={{
           opacity: isLoading ? 0.7 : 1,
           display: "grid",
-          gridTemplateColumns: "200px 1fr 200px",
-          gap: "16px",
+          gridTemplateColumns: "200px minmax(0, 1fr) 200px",
+          width: "100%",
+          gap: "10px",
           padding: "10px",
-          marginTop: "-149px",
+          height: "calc(100vh - 165px)",
+          boxSizing: "border-box",
         }}
       >
+        {/* LEFT SIDEBAR */}
         <div
           className="left-sidebar"
           style={{
             backgroundColor: "#1ec139ff",
             borderRadius: "0.75rem",
-            maxHeight: "80.5vh",
-            overflowY: "auto",
+            height: "100%",
+            overflow: "hidden",
           }}
         >
           {hasData ? (
@@ -2643,7 +2625,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
           ) : (
             <div
               className="w-full shadow-xl rounded-xl overflow-y-auto border border-black p-4 text-center"
-              style={{ backgroundColor: "#1ec139ff", maxHeight: "80.5vh" }}
+              style={{ backgroundColor: "#1ec139ff", height: "100%" }}
             >
               <div
                 style={{ backgroundColor: "#006400" }}
@@ -2663,18 +2645,20 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
           )}
         </div>
 
+        {/* CENTER SECTION */}
         <div
-          className="center-form flex flex-col"
+          className="center-form flex flex-col shadow-xl"
           style={{
             backgroundColor: "#111439ff",
-            padding: "20px",
+            padding: "15px 20px", // ✅ REDUCED PADDING TO GIVE TABLE MORE ROOM
             borderRadius: "0.75rem",
             color: "white",
-            minHeight: "100vh",
-            height: "auto",
+            height: "100%",
+            minHeight: "0",
             boxSizing: "border-box",
             gridColumnStart: 2,
             gridColumnEnd: 3,
+            width: "100%",
           }}
         >
           {currentUser?.role === "Admin" ? (
@@ -2686,7 +2670,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
               suppliers={suppliers}
             />
           ) : (
-            <div className="pos-sales-view flex flex-col h-full">
+            <div className="pos-sales-view flex flex-col h-full w-full">
               <div className="flex-shrink-0">
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="w-full flex justify-between items-center">
@@ -2700,8 +2684,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                       }}
                     >
                       <div
-                        className="font-bold text-lg"
-                        style={{ color: "red", fontSize: "1.35rem" }}
+                        className="font-bold text-2xl"
+                        style={{ color: "red" }}
                       >
                         බිල් අං: {currentBillNo}
                       </div>
@@ -2714,8 +2698,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         }}
                       >
                         <div
-                          className="font-bold text-xl whitespace-nowrap"
-                          style={{ color: "red", fontSize: "1.15rem" }}
+                          className="font-bold text-2xl whitespace-nowrap"
+                          style={{ color: "red" }}
                         >
                           මුළු විකුණුම්: Rs. {formatDecimal(totalSalesValue)}
                         </div>
@@ -2736,8 +2720,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                               })
                             }
                             style={{
-                              width: "18px",
-                              height: "18px",
+                              width: "22px",
+                              height: "22px",
                               cursor: "pointer",
                               accentColor: "#4CAF50",
                             }}
@@ -2746,7 +2730,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             htmlFor="bulkPrintCheckbox"
                             style={{
                               color: "white",
-                              fontSize: "0.9rem",
+                              fontSize: "1.1rem",
                               fontWeight: "bold",
                               cursor: "pointer",
                               whiteSpace: "nowrap",
@@ -2758,7 +2742,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                       </div>
                     </div>
                     <div
-                      className="flex gap-10 items-center justify-start mt-4 mb-4 relative"
+                      className="flex gap-10 items-center justify-end mt-4 mb-4 relative w-full"
                       style={{ minHeight: "150px" }}
                     >
                       {state.customerProfilePic && (
@@ -2767,8 +2751,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           className="cursor-pointer hover:scale-105 transition-transform"
                           style={{
                             position: "absolute",
-                            left: "805px",
-                            top: "100px",
+                            right: "150px",
+                            top: "80px",
                             display: "flex",
                             flexDirection: "row",
                             alignItems: "center",
@@ -2776,7 +2760,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             zIndex: 10,
                           }}
                         >
-                          <span className="text-xs text-gray-400">ගැ</span>
+                          <span className="text-sm font-bold text-gray-400">
+                            ගැ
+                          </span>
                           <div
                             style={{
                               width: "100px",
@@ -2809,15 +2795,17 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           className="cursor-pointer hover:scale-105 transition-transform"
                           style={{
                             position: "absolute",
-                            left: "940px",
-                            top: "100px",
+                            right: "20px",
+                            top: "80px",
                             display: "flex",
                             flexDirection: "row",
                             alignItems: "center",
                             gap: "8px",
                           }}
                         >
-                          <span className="text-xs text-gray-400">සැ</span>
+                          <span className="text-sm font-bold text-gray-400">
+                            සැ
+                          </span>
                           <div
                             style={{
                               width: "100px",
@@ -2882,15 +2870,15 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             pattern="\d*"
                             placeholder="දුරකථන අංකය (10 ඉලක්කම්)"
                             disabled={!!selectedPrintedCustomer}
-                            className="px-2 py-1 font-bold text-sm w-full border rounded text-black placeholder-gray-500"
+                            className="px-2 py-1 font-bold w-full border rounded text-black placeholder-gray-500"
                             style={{
                               backgroundColor: selectedPrintedCustomer
                                 ? "#4a5568"
                                 : "#f6f6ff",
                               border: "1px solid #4a5568",
-                              color: "white",
-                              height: "36px",
-                              fontSize: "1rem",
+                              color: "black",
+                              height: "45px",
+                              fontSize: "18px",
                               padding: "0 0.75rem",
                               borderRadius: "0.5rem",
                               boxSizing: "border-box",
@@ -2912,9 +2900,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                                 borderRadius: "0.5rem",
                                 cursor: "pointer",
                                 fontWeight: "bold",
-                                fontSize: "0.9rem",
+                                fontSize: "16px",
                                 whiteSpace: "nowrap",
-                                height: "36px",
+                                height: "45px",
                               }}
                             >
                               Save
@@ -2942,13 +2930,13 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           }
                           type="text"
                           placeholder="පාරිභෝගික කේතය"
-                          className="px-2 py-1 uppercase font-bold text-sm w-full border rounded bg-white text-black placeholder-gray-500"
+                          className="px-2 py-1 uppercase font-bold w-full border rounded bg-white text-black placeholder-gray-500"
                           style={{
                             backgroundColor: "#0d0d4d",
                             border: "1px solid #4a5568",
                             color: "white",
-                            height: "36px",
-                            fontSize: "1rem",
+                            height: "45px",
+                            fontSize: "18px",
                             padding: "0 0.75rem",
                             borderRadius: "0.5rem",
                             boxSizing: "border-box",
@@ -2959,7 +2947,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                     <div
                       style={{
                         flex: "0 0 150px",
-                        minWidth: "120px",
+                        minWidth: "140px",
                         marginLeft: "-100px",
                       }}
                     >
@@ -2979,7 +2967,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           .filter(
                             (c) =>
                               !customerSearchInput ||
-                              c.short_name.charAt(0).toUpperCase() ===
+                              (c.short_name || "").charAt(0).toUpperCase() ===
                                 customerSearchInput.charAt(0).toUpperCase(),
                           )
                           .map((c) => ({
@@ -2991,15 +2979,15 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           updateState({ customerSearchInput: v.toUpperCase() })
                         }
                         inputValue={customerSearchInput}
-                        placeholder="පාරිභෝගිකයා තෝරන්න"
+                        placeholder="පාරිභෝගිකයා"
                         isClearable
                         isSearchable
                         styles={{
                           control: (b) => ({
                             ...b,
-                            minHeight: "36px",
-                            height: "36px",
-                            fontSize: "25px",
+                            minHeight: "45px",
+                            height: "45px",
+                            fontSize: "18px",
                             backgroundColor: "white",
                             borderColor: "#4a5568",
                             borderRadius: "0.5rem",
@@ -3007,30 +2995,30 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           valueContainer: (b) => ({
                             ...b,
                             padding: "0 6px",
-                            height: "36px",
+                            height: "45px",
                           }),
                           placeholder: (b) => ({
                             ...b,
-                            fontSize: "12px",
+                            fontSize: "16px",
                             color: "#a0aec0",
                           }),
                           input: (b) => ({
                             ...b,
-                            fontSize: "12px",
+                            fontSize: "16px",
                             color: "black",
                             fontWeight: "bold",
                           }),
                           singleValue: (b) => ({
                             ...b,
                             color: "black",
-                            fontSize: "12px",
+                            fontSize: "18px",
                             fontWeight: "bold",
                           }),
                           option: (b, s) => ({
                             ...b,
                             color: "black",
                             fontWeight: "bold",
-                            fontSize: "12px",
+                            fontSize: "16px",
                             backgroundColor: s.isFocused ? "#e5e7eb" : "white",
                             cursor: "pointer",
                           }),
@@ -3046,26 +3034,34 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         menuPortalTarget={document.body}
                       />
                     </div>
-                    <div style={{ flex: "0 0 60px", minWidth: "120px" }}>
+
+                    <div style={{ flex: "0 0 80px", minWidth: "120px" }}>
+                      {/* ✅ FIXED: "එකවර මිල" (Top) - Separated functionality */}
                       <input
                         id="price_per_kg"
                         ref={refs.price_per_kg}
                         name="price_per_kg"
                         type="text"
-                        value={formData.price_per_kg}
-                        onChange={(e) =>
-                          /^\d*\.?\d*$/.test(e.target.value) &&
-                          handleInputChange("price_per_kg", e.target.value)
+                        value={
+                          state.bulkPrice !== undefined ? state.bulkPrice : ""
                         }
+                        onChange={(e) => {
+                          if (
+                            /^\d*\.?\d*$/.test(e.target.value) ||
+                            e.target.value === ""
+                          ) {
+                            updateState({ bulkPrice: e.target.value });
+                          }
+                        }}
                         onKeyDown={(e) => handleKeyDown(e, "price_per_kg")}
                         placeholder="එකවර මිල"
-                        className="px-2 py-1 uppercase font-bold text-sm w-full border rounded bg-white text-black placeholder-gray-500"
+                        className="px-2 py-1 uppercase font-bold w-full border rounded bg-white text-black placeholder-gray-500"
                         style={{
                           backgroundColor: "#0d0d4d",
                           border: "1px solid #4a5568",
                           color: "white",
-                          height: "36px",
-                          fontSize: "1rem",
+                          height: "45px",
+                          fontSize: "18px",
                           padding: "0 0.75rem",
                           borderRadius: "0.5rem",
                           boxSizing: "border-box",
@@ -3078,13 +3074,16 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         style={{
                           flex: "0 0 100px",
                           marginLeft: "5px",
-                          height: "36px",
+                          height: "45px",
                         }}
                       >
-                        <span className="absolute left-2 top-1 text-gray-400 text-[10px] pointer-events-none">
+                        <span className="absolute left-2 top-1 text-gray-500 font-bold text-[12px] pointer-events-none">
                           Loan Amount
                         </span>
-                        <span className="text-black font-bold text-sm">
+                        <span
+                          className="text-black font-bold"
+                          style={{ fontSize: "18px" }}
+                        >
                           Rs.{" "}
                           {loanAmount < 0
                             ? formatDecimal(Math.abs(loanAmount))
@@ -3094,8 +3093,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                     </div>
                   </div>
 
-                  {/* Top Row: Supplier and Item */}
-                  <div className="w-full flex flex-row gap-2 items-end mt-2">
+                  {/* 🟢 TOP ROW: Supplier, Item, Kuliya, Nattami */}
+                  <div className="w-full flex flex-row gap-2 items-end mt-4">
+                    {/* Supplier Code */}
                     <div style={{ flex: "1" }}>
                       <input
                         id="supplier_code"
@@ -3111,22 +3111,27 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         onKeyDown={(e) => handleKeyDown(e, "supplier_code")}
                         type="text"
                         placeholder="සැපයුම්කරු (Supplier)"
-                        className="px-2 py-1 uppercase font-bold text-xs border rounded bg-white text-black placeholder-gray-500 w-full"
+                        className="px-2 py-1 uppercase font-bold border rounded bg-white text-black placeholder-gray-500 w-full"
                         style={{
                           backgroundColor: "#0d0d4d",
                           border: "1px solid #4a5568",
                           color: "white",
-                          height: "44px",
-                          fontSize: "1.25rem",
-                          padding: "0 1rem",
+                          height: "55px",
+                          fontSize: "22px",
+                          padding: "0 0.75rem",
                           borderRadius: "0.5rem",
                           boxSizing: "border-box",
                         }}
                       />
                     </div>
 
+                    {/* Item Select Dropdown */}
                     <div
-                      style={{ flex: "2", position: "relative", zIndex: 10000 }}
+                      style={{
+                        flex: "1.2",
+                        position: "relative",
+                        zIndex: 10000,
+                      }}
                     >
                       {(() => {
                         const currentFilteredOptions = [...items]
@@ -3244,25 +3249,18 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                                         handleItemSelect(mockOption);
                                       }
                                     }
-
-                                    setTimeout(() => {
-                                      if (refs.weight.current) {
-                                        refs.weight.current.focus();
-                                        refs.weight.current.select();
-                                      }
-                                    }, 100);
                                   }
                                 }, 50);
                                 return;
                               }
                             }}
-                            className="react-select-container font-bold text-sm w-full"
+                            className="react-select-container font-bold w-full"
                             styles={{
                               control: (base) => ({
                                 ...base,
-                                height: "44px",
-                                minHeight: "44px",
-                                fontSize: "1.25rem",
+                                height: "55px",
+                                minHeight: "55px",
+                                fontSize: "1.3rem",
                                 backgroundColor: "white",
                                 borderColor: "#4a5568",
                                 borderRadius: "0.5rem",
@@ -3270,19 +3268,19 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                               }),
                               valueContainer: (base) => ({
                                 ...base,
-                                padding: "0 1rem",
-                                height: "44px",
+                                padding: "0 0.5rem",
+                                height: "55px",
                               }),
                               input: (base) => ({
                                 ...base,
                                 color: "black",
-                                fontSize: "1.25rem",
+                                fontSize: "1.3rem",
                               }),
                               singleValue: (base) => ({
                                 ...base,
                                 color: "black",
                                 fontWeight: "bold",
-                                fontSize: "1.25rem",
+                                fontSize: "1.3rem",
                               }),
                               option: (base, state) => ({
                                 ...base,
@@ -3291,7 +3289,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                                 backgroundColor: state.isFocused
                                   ? "#e5e7eb"
                                   : "white",
-                                fontSize: "1rem",
+                                fontSize: "1.1rem",
                                 ...(state.isSelected && {
                                   backgroundColor: "#e5e7eb",
                                 }),
@@ -3315,10 +3313,60 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         );
                       })()}
                     </div>
+
+                    {/* Kuliya & Nattami */}
+                    {[
+                      {
+                        id: "kuliya",
+                        placeholder: "කුලිය",
+                        fieldRef: refs.kuliya,
+                      },
+                      {
+                        id: "nattami",
+                        placeholder: "නාට්ටාමි",
+                        fieldRef: refs.nattami,
+                      },
+                    ].map(({ id, placeholder, fieldRef }) => (
+                      <div key={id} style={{ flex: "0.6" }}>
+                        <input
+                          id={id}
+                          ref={fieldRef}
+                          name={id}
+                          type="text"
+                          value={formData[id]}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (/^\d*\.?\d*$/.test(val) || val === "") {
+                              handleInputChange(id, val);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            const blockedKeys = ["e", "E", "+", "-"];
+                            if (blockedKeys.includes(e.key)) {
+                              e.preventDefault();
+                            }
+                            if (e.key === "Enter") {
+                              handleKeyDown(e, id);
+                            }
+                          }}
+                          placeholder={placeholder}
+                          className="px-2 py-1 uppercase font-bold border rounded bg-white text-black placeholder-gray-500 text-center"
+                          style={{
+                            backgroundColor: "white",
+                            borderRadius: "0.5rem",
+                            textAlign: "right",
+                            fontSize: "22px",
+                            height: "55px",
+                            boxSizing: "border-box",
+                            width: "100%",
+                          }}
+                        />
+                      </div>
+                    ))}
                   </div>
 
-                  {/* Bottom Row: Values */}
-                  <div className="w-full flex flex-row gap-2 items-end mt-2">
+                  {/* 🟢 BOTTOM ROW: Weight, Price, Packs ONLY */}
+                  <div className="w-full flex flex-row gap-2 items-end mt-4">
                     {[
                       {
                         id: "weight",
@@ -3335,111 +3383,96 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         placeholder: "අසුරුම්",
                         fieldRef: refs.packs,
                       },
-                      {
-                        id: "kuliya",
-                        placeholder: "කුලිය",
-                        fieldRef: refs.kuliya,
-                        isReadOnly: false,
-                      },
-                      {
-                        id: "nattami",
-                        placeholder: "නාට්ටාමි",
-                        fieldRef: refs.nattami,
-                        isReadOnly: false,
-                      },
-                    ].map(
-                      ({ id, placeholder, fieldRef, isReadOnly = false }) => (
-                        <div
-                          key={id}
-                          style={{ flex: id === "packs" ? "0.8" : "1" }}
-                        >
-                          <input
-                            id={id}
-                            ref={fieldRef}
-                            name={id}
-                            type="text"
-                            value={
-                              id === "price_per_kg_grid_item"
-                                ? state.gridPricePerKg
-                                : formData[id]
-                            }
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (id === "price_per_kg_grid_item") {
-                                if (/^\d*\.?\d*$/.test(val) || val === "")
-                                  handleInputChange(id, val);
-                              } else if (id === "kuliya" || id === "nattami") {
-                                if (/^\d*\.?\d*$/.test(val) || val === "")
-                                  handleInputChange(id, val);
-                              } else if (
-                                /^\d*\.?\d*$/.test(val) ||
-                                val === ""
-                              ) {
+                    ].map(({ id, placeholder, fieldRef }) => (
+                      <div key={id} style={{ flex: "1" }}>
+                        <input
+                          id={id}
+                          ref={fieldRef}
+                          name={id}
+                          type="text"
+                          value={
+                            id === "price_per_kg_grid_item"
+                              ? state.gridPricePerKg
+                              : formData[id]
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (id === "price_per_kg_grid_item") {
+                              if (/^\d*\.?\d*$/.test(val) || val === "")
                                 handleInputChange(id, val);
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (id === "kuliya" || id === "nattami") {
-                                const blockedKeys = ["e", "E", "+", "-"];
-                                if (blockedKeys.includes(e.key)) {
-                                  e.preventDefault();
-                                }
-                                if (e.key === "Enter") {
-                                  handleKeyDown(e, id);
-                                }
-                              } else {
-                                handleKeyDown(e, id);
-                              }
-                            }}
-                            placeholder={placeholder}
-                            readOnly={isReadOnly}
-                            className="px-2 py-1 uppercase font-bold text-xs border rounded bg-white text-black placeholder-gray-500 text-center"
-                            style={{
-                              backgroundColor: isReadOnly ? "#e2e8f0" : "white",
-                              borderRadius: "0.5rem",
-                              textAlign: "right",
-                              fontSize: "1.125rem",
-                              height: "40px",
-                              boxSizing: "border-box",
-                              width: "100%",
-                            }}
-                          />
-                        </div>
-                      ),
-                    )}
+                            } else if (/^\d*\.?\d*$/.test(val) || val === "") {
+                              handleInputChange(id, val);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            handleKeyDown(e, id);
+                          }}
+                          placeholder={placeholder}
+                          className="px-2 py-1 uppercase font-bold border rounded bg-white text-black placeholder-gray-500 text-center"
+                          style={{
+                            backgroundColor: "white",
+                            borderRadius: "0.5rem",
+                            textAlign: "right",
+                            fontSize: "26px",
+                            height: "60px",
+                            boxSizing: "border-box",
+                            width: "100%",
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Total displayed directly below the 3 boxes */}
+                  <div className="w-full flex justify-end mt-2">
+                    <div
+                      className="font-bold"
+                      style={{
+                        color: "#4ade80",
+                        paddingRight: "10px",
+                        fontSize: "28px",
+                      }}
+                    >
+                      Total: Rs. {formatDecimal(formData.total)}
+                    </div>
                   </div>
 
                   <button type="submit" style={{ display: "none" }}></button>
                 </form>
                 {errors.form && (
-                  <div className="mt-6 p-3 bg-red-100 text-red-700 rounded-xl">
+                  <div className="mt-6 p-3 bg-red-100 text-red-700 rounded-xl text-lg">
                     {errors.form}
                   </div>
                 )}
               </div>
 
-              {/* MAIN TABLE SECTION - ONLY ONE INSTANCE */}
-              <div className="flex-grow overflow-y-auto mt-1">
+              {/* ✨ SCROLLABLE MAIN TABLE SECTION ✨ */}
+              <div
+                className="flex-1 mt-3 min-h-0"
+                style={{ overflowY: "auto", overflowX: "hidden" }}
+              >
                 {displayedSales.length > 0 ? (
                   <>
                     <table
-                      className="min-w-full border-gray-200 rounded-xl text-sm"
+                      className="min-w-full border-gray-200 rounded-xl"
                       style={{
                         backgroundColor: "#000000",
                         color: "white",
                         borderCollapse: "collapse",
                         margin: "0px 0",
                         width: "100%",
+                        fontSize: "16px",
                       }}
                     >
                       <thead>
                         <tr style={{ backgroundColor: "#000000" }}>
                           <th
-                            className="px-2 py-2 border"
+                            className="border text-center"
                             style={{
                               backgroundColor: "#f5fafb",
                               color: "#000000",
-                              width: "40px",
+                              width: "30px",
+                              padding: "12px 6px",
                             }}
                           ></th>
                           {[
@@ -3456,10 +3489,13 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           ].map((header, index) => (
                             <th
                               key={index}
-                              className="px-4 py-2 border"
+                              className="border text-center"
                               style={{
                                 backgroundColor: "#f5fafb",
                                 color: "#000000",
+                                whiteSpace: "nowrap",
+                                fontWeight: "bold",
+                                padding: "12px 6px",
                               }}
                             >
                               {header}
@@ -3486,7 +3522,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                               }}
                             >
                               <td
-                                className="px-2 py-2 border text-center"
+                                className="border text-center"
+                                style={{ padding: "10px 6px" }}
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <input
@@ -3494,46 +3531,81 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                                   checked={isSelected}
                                   onChange={() => toggleSaleSelection(s.id)}
                                   onClick={(e) => e.stopPropagation()}
-                                  style={{ cursor: "pointer" }}
+                                  style={{
+                                    cursor: "pointer",
+                                    width: "18px",
+                                    height: "18px",
+                                  }}
                                 />
                               </td>
-                              <td className="px-4 py-2 border">
+                              <td
+                                className="border"
+                                style={{ padding: "10px 6px" }}
+                              >
                                 {s.supplier_code}
                               </td>
-                              <td className="px-4 py-2 border">
+                              <td
+                                className="border"
+                                style={{ padding: "10px 6px" }}
+                              >
                                 {s.item_code}
                               </td>
-                              <td className="px-4 py-2 border">
+                              <td
+                                className="border"
+                                style={{ padding: "10px 6px" }}
+                              >
                                 {s.item_name}
                               </td>
-                              <td className="px-2 py-2 border">
+                              <td
+                                className="border text-right pr-3"
+                                style={{ padding: "10px 6px" }}
+                              >
                                 {formatDecimal(s.weight)}
                               </td>
-                              <td className="px-2 py-2 border">
+                              <td
+                                className="border text-right pr-3"
+                                style={{ padding: "10px 6px" }}
+                              >
                                 {formatDecimal(s.price_per_kg)}
                               </td>
-                              <td className="px-2 py-2 border">
+                              <td
+                                className="border text-right pr-3"
+                                style={{ padding: "10px 6px" }}
+                              >
                                 {formatDecimal(
                                   (parseFloat(s.weight) || 0) *
-                                    (parseFloat(s.price_per_kg) || 0) +
-                                    (parseFloat(s.packs) || 0) *
-                                      (parseFloat(s.pack_due) || 0),
+                                    (parseFloat(s.price_per_kg) || 0),
                                 )}
                               </td>
-                              <td className="px-2 py-2 border">{s.packs}</td>
-                              <td className="px-2 py-2 border text-red-500 font-bold">
+                              <td
+                                className="border text-center"
+                                style={{ padding: "10px 6px" }}
+                              >
+                                {s.packs}
+                              </td>
+                              <td
+                                className="border text-red-500 font-bold text-right pr-3"
+                                style={{ padding: "10px 6px" }}
+                              >
                                 {formatDecimal(s.Kuliya)}
                               </td>
-                              <td className="px-2 py-2 border text-orange-500 font-bold">
+                              <td
+                                className="border text-orange-500 font-bold text-right pr-3"
+                                style={{ padding: "10px 6px" }}
+                              >
                                 {formatDecimal(s.Nattami)}
                               </td>
-                              <td className="px-2 py-2 border text-center">
+                              <td
+                                className="border text-center"
+                                style={{ padding: "10px 6px", width: "70px" }}
+                              >
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleDeleteRecord(s.id);
                                   }}
-                                  className="text-black font-bold p-1 rounded-full bg-white hover:bg-gray-200"
+                                  className="text-black font-bold py-1 px-2 rounded-md bg-white hover:bg-red-500 hover:text-white transition-colors"
+                                  style={{ minWidth: "40px", fontSize: "16px" }}
                                 >
                                   🗑️
                                 </button>
@@ -3553,13 +3625,18 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                     />
 
                     {displayedSales.length > 0 && (
-                      <SalesSummaryFooter
-                        sales={displayedSales}
-                        formatDecimal={formatDecimal}
-                      />
+                      <div style={{ flexShrink: 0 }}>
+                        <SalesSummaryFooter
+                          sales={displayedSales}
+                          formatDecimal={formatDecimal}
+                        />
+                      </div>
                     )}
 
-                    <div className="flex gap-4 items-start">
+                    <div
+                      className="flex gap-4 items-start w-full mt-4 pb-4"
+                      style={{ flexShrink: 0 }}
+                    >
                       <ItemSummary
                         sales={displayedSales}
                         formatDecimal={formatDecimal}
@@ -3569,26 +3646,11 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         formatDecimal={formatDecimal}
                       />
                     </div>
-
-                    <div
-                      className="flex items-center justify-between mb-4"
-                      style={{ marginTop: "35px" }}
-                    >
-                      {displayedSales.length > 0 && (
-                        <div
-                          className="text-2xl font-bold"
-                          style={{ color: "red" }}
-                        >
-                          (විකුණුම්: Rs. {formatDecimal(salesTotal)} + මල්ලක
-                          අගය: Rs. {formatDecimal(packCostTotal)} )
-                        </div>
-                      )}
-                    </div>
                   </>
                 ) : (
                   <div
                     style={{
-                      height: "650px", // Fixed full section height
+                      height: "100%",
                       display: "flex",
                       flexDirection: "column",
                     }}
@@ -3607,8 +3669,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                       <span
                         style={{
                           color: "#888",
-                          fontSize: "13px",
-                          fontWeight: "500",
+                          fontSize: "15px",
+                          fontWeight: "bold",
                         }}
                       >
                         📋 All Sales Records ({allSalesRecords.length} total)
@@ -3618,7 +3680,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         <span
                           style={{
                             color: "#ffd700",
-                            fontSize: "12px",
+                            fontSize: "14px",
                           }}
                         >
                           Loading...
@@ -3631,7 +3693,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                       style={{
                         flex: 1,
                         overflowY: "auto",
-                        overflowX: "auto",
+                        overflowX: "hidden",
                         border: "1px solid #4a5568",
                         borderRadius: "0.5rem",
                         backgroundColor: "#1a1a2e",
@@ -3643,7 +3705,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           width: "100%",
                           borderCollapse: "collapse",
                           color: "white",
-                          fontSize: "13px",
+                          fontSize: "16px",
                           marginTop: "-6px",
                         }}
                       >
@@ -3652,7 +3714,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           style={{
                             position: "sticky",
                             top: 0,
-                            zIndex: 1, // lower than dropdown
+                            zIndex: 1,
                             background: "transparent",
                             backdropFilter: "blur(1px)",
                           }}
@@ -3665,8 +3727,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           >
                             <th
                               style={{
-                                padding: "10px 8px",
-                                textAlign: "left",
+                                padding: "12px 6px",
+                                textAlign: "center",
                                 fontWeight: "bold",
                               }}
                             >
@@ -3674,8 +3736,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
-                                textAlign: "left",
+                                padding: "12px 6px",
+                                textAlign: "center",
                                 fontWeight: "bold",
                               }}
                             >
@@ -3683,8 +3745,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
-                                textAlign: "left",
+                                padding: "12px 6px",
+                                textAlign: "center",
                                 fontWeight: "bold",
                               }}
                             >
@@ -3692,8 +3754,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
-                                textAlign: "left",
+                                padding: "12px 6px",
+                                textAlign: "center",
                                 fontWeight: "bold",
                               }}
                             >
@@ -3701,8 +3763,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
-                                textAlign: "left",
+                                padding: "12px 6px",
+                                textAlign: "center",
                                 fontWeight: "bold",
                               }}
                             >
@@ -3710,16 +3772,16 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
+                                padding: "12px 6px",
                                 textAlign: "right",
                                 fontWeight: "bold",
                               }}
                             >
-                              Weight (kg)
+                              Weight
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
+                                padding: "12px 6px",
                                 textAlign: "right",
                                 fontWeight: "bold",
                               }}
@@ -3728,7 +3790,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
+                                padding: "12px 6px",
                                 textAlign: "right",
                                 fontWeight: "bold",
                               }}
@@ -3737,7 +3799,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
+                                padding: "12px 6px",
                                 textAlign: "right",
                                 fontWeight: "bold",
                               }}
@@ -3746,7 +3808,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
+                                padding: "12px 6px",
                                 textAlign: "right",
                                 fontWeight: "bold",
                               }}
@@ -3755,7 +3817,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             </th>
                             <th
                               style={{
-                                padding: "10px 8px",
+                                padding: "12px 6px",
                                 textAlign: "right",
                                 fontWeight: "bold",
                               }}
@@ -3820,28 +3882,48 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                                   }
                                 }}
                               >
-                                <td style={{ padding: "8px" }}>
+                                <td
+                                  style={{
+                                    padding: "10px 6px",
+                                    textAlign: "center",
+                                  }}
+                                >
                                   {sale.bill_no || "-"}
                                 </td>
 
                                 <td
-                                  style={{ padding: "8px", fontWeight: "500" }}
+                                  style={{
+                                    padding: "10px 6px",
+                                    textAlign: "center",
+                                    fontWeight: "500",
+                                  }}
                                 >
                                   {sale.customer_code || "-"}
                                 </td>
 
-                                <td style={{ padding: "8px" }}>
+                                <td
+                                  style={{
+                                    padding: "10px 6px",
+                                    textAlign: "center",
+                                  }}
+                                >
                                   {sale.supplier_code || "-"}
                                 </td>
 
-                                <td style={{ padding: "8px" }}>
+                                <td
+                                  style={{
+                                    padding: "10px 6px",
+                                    textAlign: "center",
+                                  }}
+                                >
                                   {sale.item_code || "-"}
                                 </td>
 
                                 <td
                                   style={{
-                                    padding: "8px",
-                                    maxWidth: "150px",
+                                    padding: "10px 6px",
+                                    textAlign: "center",
+                                    maxWidth: "100px",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
                                     whiteSpace: "nowrap",
@@ -3853,7 +3935,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
                                 <td
                                   style={{
-                                    padding: "8px",
+                                    padding: "10px 6px",
                                     textAlign: "right",
                                   }}
                                 >
@@ -3862,7 +3944,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
                                 <td
                                   style={{
-                                    padding: "8px",
+                                    padding: "10px 6px",
                                     textAlign: "right",
                                   }}
                                 >
@@ -3871,7 +3953,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
                                 <td
                                   style={{
-                                    padding: "8px",
+                                    padding: "10px 6px",
                                     textAlign: "right",
                                   }}
                                 >
@@ -3880,7 +3962,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
                                 <td
                                   style={{
-                                    padding: "8px",
+                                    padding: "10px 6px",
                                     textAlign: "right",
                                     color: sale.Kuliya > 0 ? "#ffd700" : "#888",
                                   }}
@@ -3890,7 +3972,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
                                 <td
                                   style={{
-                                    padding: "8px",
+                                    padding: "10px 6px",
                                     textAlign: "right",
                                     color:
                                       sale.Nattami > 0 ? "#ff9800" : "#888",
@@ -3901,7 +3983,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
                                 <td
                                   style={{
-                                    padding: "8px",
+                                    padding: "10px 6px",
                                     textAlign: "right",
                                     fontWeight: "bold",
                                     color: "#4ade80",
@@ -3920,7 +4002,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                     {allSalesRecords.length > 0 && !isLoadingAllSales && (
                       <div
                         style={{
-                          padding: "12px",
+                          padding: "15px",
                           backgroundColor: "#0f0f23",
                           borderRadius: "0.5rem",
                           display: "flex",
@@ -3929,11 +4011,11 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           flexShrink: 0,
                         }}
                       >
-                        <span style={{ color: "#888", fontSize: "12px" }}>
+                        <span style={{ color: "#888", fontSize: "14px" }}>
                           Total Records: {allSalesRecords.length}
                         </span>
 
-                        <span style={{ color: "#888", fontSize: "12px" }}>
+                        <span style={{ color: "#888", fontSize: "14px" }}>
                           Total Weight:{" "}
                           {formatDecimal(
                             allSalesRecords.reduce(
@@ -3947,7 +4029,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         <span
                           style={{
                             color: "#4ade80",
-                            fontSize: "12px",
+                            fontSize: "14px",
                             fontWeight: "bold",
                           }}
                         >
@@ -4014,7 +4096,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
               </div>
               <div className="py-4">
                 <p className="text-gray-700">
-                  මුද්‍රණය නොකළ විකුණුම් කිසිවක් සොයාගත නොහැක
+                  මුද්‍රණය නොකළ විකුණුම් කිසිවක් සොයාගත නොහැක.
                 </p>
               </div>
             </div>
