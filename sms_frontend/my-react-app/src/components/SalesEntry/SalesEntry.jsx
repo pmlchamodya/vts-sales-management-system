@@ -7,6 +7,17 @@ import AdminView from "../AdminView";
 import { ThermalBillHTML, A4BillHTML } from "../BillTemplates";
 import ImagePreviewModal from "../ImagePreviewModal";
 
+// --- IMPORTING THE NEWLY SPLIT COMPONENTS ---
+import CustomerList from "./CustomerList";
+import ActiveBillTable from "./ActiveBillTable";
+import AllSalesRecords from "./AllSalesRecords";
+import {
+  BreakdownDisplay,
+  ItemSummary,
+  SalesSummaryFooter,
+  ContextMenu,
+} from "./SalesHelpers";
+
 const routes = {
   markPrinted: "/sales/mark-printed",
   getLoanAmount: "/get-loan-amount",
@@ -20,792 +31,6 @@ const routes = {
   bulkUpdateCustomer: "/sales/bulk-update-customer",
 };
 
-// --- Sub-Components ---
-const BreakdownDisplay = ({ sale, formatDecimal }) => {
-  if (!sale?.breakdown_history) return null;
-  let history = [];
-  try {
-    history =
-      typeof sale.breakdown_history === "string"
-        ? JSON.parse(sale.breakdown_history)
-        : sale.breakdown_history;
-  } catch (e) {
-    return null;
-  }
-  if (!Array.isArray(history) || history.length < 2) return null;
-
-  return (
-    <div
-      className="mt-4 p-3 bg-white rounded-lg border-2 border-blue-500 shadow-sm"
-      style={{ width: "100%", maxWidth: "450px", margin: "10px auto" }}
-    >
-      <div style={{ maxHeight: "150px", overflowY: "auto" }}>
-        <table
-          className="w-full text-sm text-black"
-          style={{ marginTop: "-6px" }}
-        >
-          <thead>
-            <tr className="text-gray-500 border-b">
-              <th className="text-left py-1">(වේලාව)</th>
-              <th className="text-right py-1">(බර)</th>
-              <th className="text-right py-1">(මලු)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((entry, i) => (
-              <tr key={i} className="border-b border-gray-50 last:border-0">
-                <td className="py-1 text-black">{entry.time}</td>
-                <td className="py-1 text-right font-bold text-black">
-                  {formatDecimal(entry.weight)} kg
-                </td>
-                <td className="py-1 text-right font-bold text-black">
-                  {entry.packs}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-2 pt-1 border-t-2 border-blue-200 text-right font-black text-lg text-black">
-        Total: {formatDecimal(sale.weight)}kg / {sale.packs}p
-      </div>
-    </div>
-  );
-};
-
-const CustomerList = React.memo(
-  ({
-    type,
-    searchQuery,
-    onSearchChange,
-    selectedPrintedCustomer,
-    selectedUnprintedCustomer,
-    handleCustomerClick,
-    allSales,
-    lastUpdate,
-    isCashFilterActive,
-    toggleCashFilter,
-  }) => {
-    const getPrintedCustomerGroups = () => {
-      const groups = {};
-      allSales
-        .filter((s) => s.bill_printed === "Y" && s.bill_no)
-        .forEach((sale) => {
-          if (type === "printed") {
-            if (isCashFilterActive) {
-              if (sale.credit_transaction !== "Y") return;
-            } else {
-              if (sale.credit_transaction !== "N") return;
-            }
-          }
-
-          const groupKey = `${sale.customer_code}-${sale.bill_no}`;
-          if (!groups[groupKey])
-            groups[groupKey] = {
-              customerCode: sale.customer_code,
-              billNo: sale.bill_no,
-              displayText: sale.customer_code,
-            };
-        });
-      return groups;
-    };
-
-    // ONLY Strict "N" means unprinted
-    const getUnprintedCustomers = () => {
-      const customerMap = {};
-      allSales
-        .filter((s) => s.bill_printed === "N")
-        .forEach((sale) => {
-          const customerCode = sale.customer_code;
-          const saleTimestamp = new Date(
-            sale.timestamp || sale.created_at || sale.date || sale.id,
-          );
-          if (
-            !customerMap[customerCode] ||
-            saleTimestamp > new Date(customerMap[customerCode].latestTimestamp)
-          ) {
-            customerMap[customerCode] = {
-              customerCode,
-              latestTimestamp:
-                sale.timestamp || sale.created_at || sale.date || sale.id,
-              originalItem: customerCode,
-            };
-          }
-        });
-      return customerMap;
-    };
-
-    const printedCustomerGroups =
-      type === "printed" ? getPrintedCustomerGroups() : {};
-    const unprintedCustomerMap =
-      type === "unprinted" ? getUnprintedCustomers() : {};
-
-    const filteredPrintedGroups = useMemo(() => {
-      if (type !== "printed") return [];
-      let groupsArray = Object.values(printedCustomerGroups);
-      if (searchQuery) {
-        const lowerQuery = searchQuery.toLowerCase();
-        groupsArray = groupsArray.filter(
-          (g) =>
-            (g.customerCode || "").toLowerCase().startsWith(lowerQuery) ||
-            (g.billNo || "").toString().toLowerCase().startsWith(lowerQuery) ||
-            (g.displayText || "").toLowerCase().startsWith(lowerQuery),
-        );
-      }
-      return groupsArray.sort(
-        (a, b) => (parseInt(b.billNo) || 0) - (parseInt(a.billNo) || 0),
-      );
-    }, [printedCustomerGroups, searchQuery, type]);
-
-    const filteredUnprintedCustomers = useMemo(() => {
-      if (type !== "unprinted") return [];
-      let customersArray = Object.values(unprintedCustomerMap);
-      if (searchQuery)
-        customersArray = customersArray.filter((c) =>
-          (c.customerCode || "")
-            .toLowerCase()
-            .startsWith(searchQuery.toLowerCase()),
-        );
-      return customersArray.sort(
-        (a, b) => new Date(b.latestTimestamp) - new Date(a.latestTimestamp),
-      );
-    }, [unprintedCustomerMap, searchQuery, type]);
-
-    const displayItems =
-      type === "printed" ? filteredPrintedGroups : filteredUnprintedCustomers;
-    const isSelected = (item) =>
-      type === "printed"
-        ? selectedPrintedCustomer === `${item.customerCode}-${item.billNo}`
-        : selectedUnprintedCustomer === item.customerCode;
-
-    return (
-      <div
-        key={`${type}-${lastUpdate || ""}`}
-        className="w-full shadow-xl rounded-xl overflow-y-auto border border-black flex flex-col"
-        style={{
-          backgroundColor: "#1ec139ff",
-          height: "100%",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{ backgroundColor: "#006400" }}
-          className="p-2 rounded-t-xl flex-shrink-0"
-        >
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <h2
-              className="font-bold text-white whitespace-nowrap"
-              style={{ fontSize: "16px" }}
-            >
-              {type === "printed" ? "මුද්‍රණය කළ" : "මුද්‍රණය නොකළ"}
-            </h2>
-
-            {type === "printed" && (
-              <div
-                onClick={() => toggleCashFilter()}
-                className="cursor-pointer transition-all border border-white rounded"
-                style={{
-                  width: "20px",
-                  height: "20px",
-                  backgroundColor: isCashFilterActive
-                    ? "#2563eb"
-                    : "transparent",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  marginLeft: "auto",
-                  marginTop: "-25px",
-                }}
-              >
-                {isCashFilterActive && (
-                  <span
-                    style={{
-                      color: "white",
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    ✓
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          <input
-            type="text"
-            name="prevent_browser_autofill_search"
-            autoComplete="new-password"
-            placeholder={`සෙවීම...`}
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value.toUpperCase())}
-            className="px-3 py-1 border rounded-xl focus:ring-2 focus:ring-blue-300 uppercase block mx-auto w-11/12 text-center font-bold"
-            style={{ fontSize: "14px" }}
-          />
-        </div>
-
-        <div className="py-2 flex-1 overflow-y-auto min-h-0">
-          {displayItems.length === 0 ? (
-            <p className="text-gray-700 p-2 text-center text-sm font-bold">
-              වාර්තා නොමැත.
-            </p>
-          ) : (
-            <ul className="flex flex-col px-2 w-full gap-1">
-              {displayItems.map((item) => {
-                let customerCode, displayText, billSales;
-                if (type === "printed") {
-                  customerCode = item.customerCode;
-                  displayText = `${item.customerCode}-${item.billNo}`;
-                  billSales = allSales.filter(
-                    (s) =>
-                      s.customer_code === item.customerCode &&
-                      s.bill_no === item.billNo,
-                  );
-                } else {
-                  customerCode = item.customerCode;
-                  displayText = item.customerCode;
-                  billSales = allSales.filter(
-                    (s) =>
-                      (s.customer_code || "").trim().toUpperCase() ===
-                        (item.customerCode || "").trim().toUpperCase() &&
-                      s.bill_printed === "N",
-                  );
-                }
-                const isItemSelected = isSelected(item);
-                const buttonText = displayText
-                  ? displayText.replace(/\n/g, " ")
-                  : "";
-
-                return (
-                  <li
-                    key={
-                      type === "printed"
-                        ? `${item.customerCode}-${item.billNo}`
-                        : item.customerCode
-                    }
-                    className="flex w-full"
-                  >
-                    <button
-                      onClick={() =>
-                        handleCustomerClick(
-                          type,
-                          customerCode,
-                          item.billNo || null,
-                          billSales,
-                        )
-                      }
-                      className={`py-2 mb-1 rounded-lg border w-full text-center px-2 shadow-sm ${isItemSelected ? "border-blue-600 bg-blue-300" : "bg-gray-50 hover:bg-gray-200 border-gray-300"}`}
-                    >
-                      <span
-                        style={{
-                          display: "block",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          width: "100%",
-                          fontSize: "15px",
-                        }}
-                        className={`font-bold ${isItemSelected ? "text-black" : "text-gray-800"}`}
-                        title={buttonText}
-                      >
-                        {buttonText}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      </div>
-    );
-  },
-);
-
-const ItemSummary = ({ sales }) => {
-  const formatWeight = (value) => {
-    if (!value) return "0";
-    const num = parseFloat(value);
-    return num % 1 === 0 ? num.toString() : num.toFixed(1);
-  };
-
-  const formatPacks = (value) => {
-    if (!value) return "0";
-    return parseInt(value).toString();
-  };
-
-  const summary = useMemo(() => {
-    const result = {};
-    sales.forEach((sale) => {
-      const itemName = sale.item_name || "Unknown";
-      if (!result[itemName])
-        result[itemName] = { totalWeight: 0, totalPacks: 0 };
-      result[itemName].totalWeight += parseFloat(sale.weight) || 0;
-      result[itemName].totalPacks += parseInt(sale.packs) || 0;
-    });
-    return result;
-  }, [sales]);
-
-  if (Object.keys(summary).length === 0) return null;
-
-  const items = Object.entries(summary);
-
-  const rows = [];
-  for (let i = 0; i < items.length; i += 3) {
-    rows.push(items.slice(i, i + 3));
-  }
-
-  return (
-    <div
-      style={{
-        width: "100%",
-        backgroundColor: "#ffffff",
-        color: "#000000",
-        fontFamily: "'Segoe UI', Tahoma",
-        marginTop: "10px",
-        borderRadius: "8px",
-        padding: "10px",
-      }}
-    >
-      <div
-        style={{
-          textAlign: "center",
-          marginBottom: "10px",
-        }}
-      >
-        <span style={{ fontSize: "20px", fontWeight: "900" }}>
-          Item Summary
-        </span>
-      </div>
-
-      {rows.map((row, rowIndex) => (
-        <div
-          key={rowIndex}
-          style={{
-            display: "flex",
-            gap: "10px",
-            marginBottom: "5px",
-            backgroundColor: "#ffffff",
-          }}
-        >
-          {row.map(([itemName, data]) => (
-            <div key={itemName} style={{ flex: 1 }}>
-              <span
-                style={{
-                  fontSize: "18px",
-                  fontWeight: "800",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  display: "block",
-                }}
-              >
-                {itemName}: {formatWeight(data.totalWeight)}kg/
-                {formatPacks(data.totalPacks)}p
-              </span>
-            </div>
-          ))}
-
-          {row.length < 3 &&
-            Array.from({ length: 3 - row.length }).map((_, idx) => (
-              <div key={idx} style={{ flex: 1 }} />
-            ))}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const SalesSummaryFooter = ({ sales, formatDecimal }) => {
-  const totals = useMemo(() => {
-    return sales.reduce(
-      (acc, s) => {
-        const weight = parseFloat(s.weight) || 0;
-        const price = parseFloat(s.price_per_kg) || 0;
-        const packs = parseFloat(s.packs) || 0;
-        const packCost = parseFloat(s.CustomerPackCost) || 0;
-        const packLabour = parseFloat(s.CustomerPackLabour) || 0;
-        acc.billTotal += weight * price;
-        acc.totalBagPrice += packs * packCost;
-        acc.totalLabour += packs * packLabour;
-        return acc;
-      },
-      { billTotal: 0, totalBagPrice: 0, totalLabour: 0 },
-    );
-  }, [sales]);
-
-  const finalPayable = totals.billTotal + totals.totalBagPrice;
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        width: "100%",
-        backgroundColor: "#111827",
-        border: "2px solid #3b82f6",
-        borderRadius: "0.75rem",
-        padding: "15px 30px",
-        marginTop: "15px",
-        color: "white",
-        fontSize: "20px",
-        fontWeight: "bold",
-        whiteSpace: "nowrap",
-        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.2)",
-      }}
-    >
-      <div>
-        <span style={{ color: "#9ca3af", marginRight: "8px" }}>එකතුව:</span>
-        {formatDecimal(totals.billTotal)}
-      </div>
-      <div>
-        <span style={{ color: "#9ca3af", marginRight: "8px" }}>බෑග් මිල:</span>
-        {formatDecimal(totals.totalBagPrice)}
-      </div>
-      <div>
-        <span style={{ color: "#9ca3af", marginRight: "8px" }}>කාම්කරු:</span>0
-      </div>
-      <div>
-        <span style={{ color: "#9ca3af", marginRight: "8px" }}>ගෙවිය:</span>
-        <span style={{ color: "#facc15", fontSize: "26px" }}>
-          {formatDecimal(finalPayable)}
-        </span>
-      </div>
-    </div>
-  );
-};
-
-// --- Context Menu for Bulk Update ---
-const ContextMenu = React.memo(
-  ({ show, onClose, onUpdate, selectionCriteria, selectedCount }) => {
-    const [localCustomerCode, setLocalCustomerCode] = React.useState("");
-
-    React.useEffect(() => {
-      if (show) {
-        setLocalCustomerCode("");
-      }
-    }, [show]);
-
-    const handleInputChange = (e) => {
-      const value = e.target.value.toUpperCase();
-      setLocalCustomerCode(value);
-    };
-
-    const handleUpdate = () => {
-      if (localCustomerCode.trim()) {
-        onUpdate(localCustomerCode.trim().toUpperCase());
-        setLocalCustomerCode("");
-      } else {
-        alert("Please enter a customer code");
-      }
-    };
-
-    const handleClose = () => {
-      setLocalCustomerCode("");
-      onClose();
-    };
-
-    if (!show) return null;
-
-    return (
-      <>
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            backdropFilter: "blur(4px)",
-            zIndex: 9999,
-          }}
-          onClick={handleClose}
-        />
-        <div
-          style={{
-            position: "fixed",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            backgroundColor: "#ffffff",
-            borderRadius: "16px",
-            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
-            zIndex: 10000,
-            width: "90%",
-            maxWidth: "450px",
-            maxHeight: "90vh",
-            overflow: "auto",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <style>{`
-                  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } 
-                  .modal-button { transition: all 0.2s ease; cursor: pointer; } 
-                  .modal-button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); } 
-                  .modal-button:active { transform: translateY(0); }
-              `}</style>
-          <div
-            style={{
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              padding: "12px 20px",
-              borderTopLeftRadius: "16px",
-              borderTopRightRadius: "16px",
-              color: "white",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  background: "rgba(255, 255, 255, 0.2)",
-                  borderRadius: "8px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "16px",
-                }}
-              >
-                ⚡
-              </div>
-              <div>
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: "16px",
-                    fontWeight: "bold",
-                    letterSpacing: "-0.5px",
-                  }}
-                >
-                  Bulk Update Customer
-                </h2>
-                <p
-                  style={{
-                    margin: "2px 0 0 0",
-                    fontSize: "11px",
-                    opacity: 0.9,
-                  }}
-                >
-                  Update multiple customer codes at once
-                </p>
-              </div>
-            </div>
-          </div>
-          <div style={{ padding: "16px 20px" }}>
-            {selectionCriteria && (
-              <div
-                style={{
-                  background:
-                    "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
-                  borderRadius: "10px",
-                  padding: "10px 12px",
-                  marginBottom: "16px",
-                  border: "1px solid #fbbf24",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    marginBottom: "8px",
-                  }}
-                >
-                  <span style={{ fontSize: "14px" }}>📋</span>
-                  <span
-                    style={{
-                      fontWeight: "bold",
-                      fontSize: "11px",
-                      color: "#92400e",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.5px",
-                    }}
-                  >
-                    Current Selection
-                  </span>
-                </div>
-                <div style={{ display: "grid", gap: "6px" }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "6px 8px",
-                      background: "white",
-                      borderRadius: "6px",
-                    }}
-                  >
-                    <span style={{ fontSize: "11px", color: "#78350f" }}>
-                      Customer:
-                    </span>
-                    <span
-                      style={{
-                        fontWeight: "bold",
-                        fontSize: "12px",
-                        color: "#92400e",
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      {selectionCriteria.customer_code}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "6px 8px",
-                      background: "white",
-                      borderRadius: "6px",
-                    }}
-                  >
-                    <span style={{ fontSize: "11px", color: "#78350f" }}>
-                      Item:
-                    </span>
-                    <span
-                      style={{
-                        fontWeight: "bold",
-                        fontSize: "12px",
-                        color: "#92400e",
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      {selectionCriteria.item_code}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "6px 8px",
-                      background: "#10b981",
-                      borderRadius: "6px",
-                      color: "white",
-                    }}
-                  >
-                    <span style={{ fontSize: "11px" }}>Selected:</span>
-                    <span style={{ fontWeight: "bold", fontSize: "14px" }}>
-                      {selectedCount || 0}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-            <div style={{ marginBottom: "20px" }}>
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "6px",
-                  fontWeight: "600",
-                  fontSize: "12px",
-                  color: "#374151",
-                }}
-              >
-                ✏️ New Customer Code
-              </label>
-              <input
-                type="text"
-                value={localCustomerCode}
-                onChange={handleInputChange}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleUpdate();
-                  }
-                }}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "10px",
-                  fontSize: "13px",
-                  fontWeight: "500",
-                  transition: "all 0.2s ease",
-                  outline: "none",
-                  boxSizing: "border-box",
-                  fontFamily: "monospace",
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = "#667eea";
-                  e.target.style.boxShadow =
-                    "0 0 0 3px rgba(102, 126, 234, 0.1)";
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = "#e5e7eb";
-                  e.target.style.boxShadow = "none";
-                }}
-                autoFocus
-                placeholder="e.g., CUST001"
-              />
-            </div>
-            <button
-              onClick={handleUpdate}
-              className="modal-button"
-              style={{
-                width: "100%",
-                padding: "12px",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                color: "white",
-                border: "none",
-                borderRadius: "10px",
-                cursor: "pointer",
-                fontWeight: "bold",
-                fontSize: "14px",
-                marginBottom: "0",
-              }}
-            >
-              🚀 Update {selectedCount || 0} Record
-              {selectedCount !== 1 ? "s" : ""}
-            </button>
-          </div>
-          <div
-            style={{
-              padding: "12px 20px",
-              background: "#f9fafb",
-              borderBottomLeftRadius: "16px",
-              borderBottomRightRadius: "16px",
-              borderTop: "1px solid #e5e7eb",
-              display: "flex",
-              justifyContent: "flex-end",
-            }}
-          >
-            <button
-              onClick={handleClose}
-              style={{
-                padding: "6px 16px",
-                background: "transparent",
-                border: "1px solid #e5e7eb",
-                borderRadius: "6px",
-                color: "#6b7280",
-                fontSize: "12px",
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-                fontWeight: "500",
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = "#f3f4f6";
-                e.target.style.borderColor = "#d1d5db";
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = "transparent";
-                e.target.style.borderColor = "#e5e7eb";
-              }}
-            >
-              Cancel (ESC)
-            </button>
-          </div>
-        </div>
-      </>
-    );
-  },
-);
-
-// --- Main Export Component ---
 const initialFormData = {
   customer_code: "",
   customer_name: "",
@@ -936,7 +161,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     billSize: "3inch",
     priceManuallyChanged: false,
     gridPricePerKg: "",
-    bulkPrice: "", // ✅ For top "එකවර මිල"
+    bulkPrice: "",
     selectedSaleForBreakdown: null,
     showSavePhoneButton: false,
     isTelephoneValid: false,
@@ -1281,7 +506,6 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     [unprintedSales, searchQueries.unprinted],
   );
 
-  // ✅ FIXED: Correctly ensures newly submitted sales don't disappear before F5
   const displayedSales = useMemo(() => {
     let sales = [];
 
@@ -1305,12 +529,17 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         .trim()
         .toUpperCase();
 
+      const filteredNew = newSales.filter(
+        (s) =>
+          (s.customer_code || "").trim().toUpperCase() !==
+          safeSelectedUnprinted,
+      );
       const filteredUnprinted = unprintedSales.filter(
         (s) =>
           (s.customer_code || "").trim().toUpperCase() ===
           safeSelectedUnprinted,
       );
-      sales = [...newSales, ...filteredUnprinted];
+      sales = [...filteredNew, ...filteredUnprinted];
     } else {
       sales = newSales;
     }
@@ -1561,10 +790,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
   const handleInputChange = (field, value) => {
     if (field === "price_per_kg") {
-      // ✅ FIXED: Top "එකවර මිල" sets its own state, but DOES NOT override the bottom input immediately
       updateState({ bulkPrice: value });
     } else if (field === "price_per_kg_grid_item") {
-      // ✅ FIXED: Bottom "මිල" updates ONLY the active form, leaving bulkPrice alone
       setFormData((prev) => ({ ...prev, price_per_kg: value }));
       updateState({ gridPricePerKg: value, priceManuallyChanged: true });
     } else if (field === "nattami") {
@@ -1639,7 +866,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       const fetchedPackDue = parseFloat(item?.pack_due) || 0;
       const fetchedPackCost = parseFloat(item?.pack_cost) || 0;
 
-      // ✅ Use Bulk Price if it has a value, otherwise fall back to item price
+      // Use Bulk Price if it has a value, otherwise fall back to item price
       const priceToUse = state.bulkPrice !== "" ? state.bulkPrice : "";
 
       setFormData((prev) => ({
@@ -1647,13 +874,13 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         item_code: item.no,
         item_name: item.type,
         pack_due: fetchedPackDue,
-        price_per_kg: priceToUse, // Set the form price to bulk price if exists
+        price_per_kg: priceToUse,
       }));
 
       updateState({
         packCost: fetchedPackCost,
         itemSearchInput: "",
-        gridPricePerKg: priceToUse, // Set grid display price to bulk price if exists
+        gridPricePerKg: priceToUse,
       });
 
       setTimeout(() => refs.weight.current?.focus(), 100);
@@ -2130,7 +1357,6 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   };
 
-  // ✅ FIXED: Optimistic UI Update completely without relying on response delay
   const handleMarkAllProcessed = async () => {
     const salesToProcess = displayedSales.filter(
       (s) => s.id && s.bill_printed !== "Y",
@@ -2146,7 +1372,6 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       return;
     }
 
-    // Instantly reflect change on UI so no refresh is needed
     updateState({
       allSales: allSales.map((s) =>
         salesToProcess.some((ps) => ps.id === s.id)
@@ -2801,6 +2026,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             flexDirection: "row",
                             alignItems: "center",
                             gap: "8px",
+                            zIndex: 10,
                           }}
                         >
                           <span className="text-sm font-bold text-gray-400">
@@ -3036,7 +2262,6 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                     </div>
 
                     <div style={{ flex: "0 0 80px", minWidth: "120px" }}>
-                      {/* ✅ FIXED: "එකවර මිල" (Top) - Separated functionality */}
                       <input
                         id="price_per_kg"
                         ref={refs.price_per_kg}
@@ -4055,10 +3280,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
           style={{
             backgroundColor: "#1ec139ff",
             borderRadius: "0.75rem",
-            maxHeight: "80.5vh",
-            overflowY: "auto",
-            gridColumnStart: 3,
-            gridColumnEnd: 4,
+            height: "100%",
+            overflow: "hidden",
           }}
         >
           {hasData ? (
@@ -4081,7 +3304,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
           ) : (
             <div
               className="w-full shadow-xl rounded-xl overflow-y-auto border border-black p-4 text-center"
-              style={{ backgroundColor: "#1ec139ff", maxHeight: "80.5vh" }}
+              style={{ backgroundColor: "#1ec139ff", height: "100%" }}
             >
               <div
                 style={{ backgroundColor: "#006400" }}
