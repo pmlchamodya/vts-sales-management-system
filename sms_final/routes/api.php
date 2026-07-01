@@ -15,6 +15,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\SalesEntryController;
 use App\Http\Controllers\CommissionController;
 use App\Models\Setting;
+use App\Http\Controllers\LorryTransactionController;
 
 // ----------------------------------------------------------------------
 // 🚨 PUBLIC ROUTES (No Authentication Required) 🚨
@@ -244,4 +245,6 @@ Route::post('/sales/bulk-update-customer', [SalesEntryController::class, 'bulkUp
 Route::post('/sales/bulk-update-supplier', [SalesEntryController::class, 'bulkUpdateSupplier']);
 //kuliya private function
 Route::post('/sales/calculate-kuliya', [SalesEntryController::class, 'calculateKuliyaApi']);
+//lorry transaction routes
+Route::apiResource('lorry-transactions', LorryTransactionController::class);
 

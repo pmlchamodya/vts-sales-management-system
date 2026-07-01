@@ -113,6 +113,7 @@ const CustomerList = React.memo(
           backgroundColor: "#1ec139ff",
           height: "100%",
           overflow: "hidden",
+          marginTop: "-10px"
         }}
       >
         <div
@@ -211,7 +212,7 @@ const CustomerList = React.memo(
                         ? `${item.customerCode}-${item.billNo}`
                         : item.customerCode
                     }
-                    className="flex w-full"
+                    className="flex w-full justify-center"
                   >
                     <button
                       onClick={() =>
@@ -222,7 +223,12 @@ const CustomerList = React.memo(
                           billSales,
                         )
                       }
-                      className={`py-2 mb-1 rounded-lg border w-full text-center px-2 shadow-sm ${isItemSelected ? "border-blue-600 bg-blue-300" : "bg-gray-50 hover:bg-gray-200 border-gray-300"}`}
+                      className={`py-2 mb-1 rounded-lg border text-left px-3 shadow-sm transition-all duration-200 ${
+                        isItemSelected 
+                          ? "border-blue-400 bg-blue-200 hover:bg-blue-300" 
+                          : "bg-gray-50 hover:bg-gray-200 border-gray-300"
+                      }`}
+                      style={{ width: "150px" }}
                     >
                       <span
                         style={{
@@ -233,7 +239,7 @@ const CustomerList = React.memo(
                           width: "100%",
                           fontSize: "15px",
                         }}
-                        className={`font-bold ${isItemSelected ? "text-black" : "text-gray-800"}`}
+                        className={`font-bold ${isItemSelected ? "text-blue-900" : "text-gray-800"}`}
                         title={buttonText}
                       >
                         {buttonText}
@@ -248,6 +254,21 @@ const CustomerList = React.memo(
       </div>
     );
   },
+  // FIXED: Proper comparison - return FALSE if props changed, TRUE if they're the same
+  (prevProps, nextProps) => {
+    // Check if any of the critical props have changed
+    const hasChanged = 
+      prevProps.type !== nextProps.type ||
+      prevProps.searchQuery !== nextProps.searchQuery ||
+      prevProps.selectedPrintedCustomer !== nextProps.selectedPrintedCustomer ||
+      prevProps.selectedUnprintedCustomer !== nextProps.selectedUnprintedCustomer ||
+      prevProps.isCashFilterActive !== nextProps.isCashFilterActive ||
+      prevProps.lastUpdate !== nextProps.lastUpdate ||
+      prevProps.allSales !== nextProps.allSales;
+    
+    // Return true if NO changes (skip re-render), false if changes (re-render)
+    return !hasChanged;
+  }
 );
 
 export default CustomerList;

@@ -506,61 +506,58 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     [unprintedSales, searchQueries.unprinted],
   );
 
-  const displayedSales = useMemo(() => {
-    let sales = [];
+ const displayedSales = useMemo(() => {
+  let sales = [];
 
-    if (selectedPrintedCustomer) {
-      if (selectedPrintedCustomer.includes("-")) {
-        const [cCode, bNo] = selectedPrintedCustomer.split("-");
-        sales = printedSales.filter(
-          (s) =>
-            (s.customer_code || "").trim().toUpperCase() ===
-              cCode.trim().toUpperCase() && String(s.bill_no) === String(bNo),
-        );
-      } else {
-        sales = printedSales.filter(
-          (s) =>
-            (s.customer_code || "").trim().toUpperCase() ===
-            selectedPrintedCustomer.trim().toUpperCase(),
-        );
-      }
-    } else if (selectedUnprintedCustomer) {
-      const safeSelectedUnprinted = selectedUnprintedCustomer
-        .trim()
-        .toUpperCase();
-
-      const filteredNew = newSales.filter(
-        (s) =>
-          (s.customer_code || "").trim().toUpperCase() !==
-          safeSelectedUnprinted,
-      );
-      const filteredUnprinted = unprintedSales.filter(
+  if (selectedPrintedCustomer) {
+    if (selectedPrintedCustomer.includes("-")) {
+      const [cCode, bNo] = selectedPrintedCustomer.split("-");
+      sales = printedSales.filter(
         (s) =>
           (s.customer_code || "").trim().toUpperCase() ===
-          safeSelectedUnprinted,
+          cCode.trim().toUpperCase() && String(s.bill_no) === String(bNo),
       );
-      sales = [...filteredNew, ...filteredUnprinted];
     } else {
-      sales = newSales;
+      sales = printedSales.filter(
+        (s) =>
+          (s.customer_code || "").trim().toUpperCase() ===
+          selectedPrintedCustomer.trim().toUpperCase(),
+      );
     }
+  } else if (selectedUnprintedCustomer) {
+    const safeSelectedUnprinted = selectedUnprintedCustomer.trim().toUpperCase();
 
-    const uniqueSales = [];
-    const map = new Map();
-    for (const item of sales) {
-      if (!map.has(item.id)) {
-        map.set(item.id, true);
-        uniqueSales.push(item);
-      }
+    // FIX: Include BOTH newSales AND unprintedSales for this customer
+    const customerNewSales = newSales.filter(
+      (s) => (s.customer_code || "").trim().toUpperCase() === safeSelectedUnprinted
+    );
+    const customerUnprintedSales = unprintedSales.filter(
+      (s) => (s.customer_code || "").trim().toUpperCase() === safeSelectedUnprinted
+    );
+    
+    sales = [...customerNewSales, ...customerUnprintedSales];
+  } else {
+    sales = newSales;
+  }
+
+  const uniqueSales = [];
+  const map = new Map();
+  for (const item of sales) {
+    if (!map.has(item.id)) {
+      map.set(item.id, true);
+      uniqueSales.push(item);
     }
+  }
 
-    return uniqueSales.slice().reverse();
-  }, [
-    newSales,
-    unprintedSales,
-    printedSales,
-    selectedUnprintedCustomer,
-    selectedPrintedCustomer,
-  ]);
+  return uniqueSales.slice().reverse();
+}, [
+  newSales,
+  unprintedSales,
+  printedSales,
+  selectedUnprintedCustomer,
+  selectedPrintedCustomer,
+  allSales, // Add allSales as dependency to ensure updates
+]);
 
   const autoCustomerCode = useMemo(
     () =>
@@ -896,119 +893,131 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   };
 
-  const handleCustomerClick = async (
-    type,
-    customerCode,
-    billNo = null,
-    salesRecords = [],
-  ) => {
-    if (state.isPrinting) return;
+const handleCustomerClick = async (
+  type,
+  customerCode,
+  billNo = null,
+  salesRecords = [],
+) => {
+  if (state.isPrinting) return;
 
-    if (currentUser?.role === "Admin") {
-      if (adminViewRef.current && adminViewRef.current.openCustomerBill) {
-        adminViewRef.current.openCustomerBill(
-          customerCode,
-          billNo,
-          salesRecords,
-        );
-      } else {
-        alert("Customer bill view is loading. Please try again.");
-      }
-      return;
+  if (currentUser?.role === "Admin") {
+    if (adminViewRef.current && adminViewRef.current.openCustomerBill) {
+      adminViewRef.current.openCustomerBill(
+        customerCode,
+        billNo,
+        salesRecords,
+      );
+    } else {
+      alert("Customer bill view is loading. Please try again.");
     }
+    return;
+  }
 
-    const isPrinted = type === "printed";
-    let selectionKey = customerCode;
-    if (isPrinted && billNo) selectionKey = `${customerCode}-${billNo}`;
-    const isCurrentlySelected = isPrinted
-      ? state.selectedPrintedCustomer === selectionKey
-      : state.selectedUnprintedCustomer === selectionKey;
+  const isPrinted = type === "printed";
+  let selectionKey = customerCode;
+  if (isPrinted && billNo) selectionKey = `${customerCode}-${billNo}`;
+  
+  // Check if currently selected
+  const isCurrentlySelected = isPrinted
+    ? state.selectedPrintedCustomer === selectionKey
+    : state.selectedUnprintedCustomer === selectionKey;
 
-    if (isCurrentlySelected) {
-      handleClearForm(true);
-      updateState({
-        selectedPrintedCustomer: null,
-        selectedUnprintedCustomer: null,
-      });
-      return;
-    }
-
+  // If already selected, DESELECT (toggle off)
+  if (isCurrentlySelected) {
+    // Clear form
+    setFormData({
+      ...initialFormData,
+    });
+    
+    // Clear all selection states
     updateState({
-      selectedPrintedCustomer: isPrinted ? selectionKey : null,
-      selectedUnprintedCustomer: !isPrinted ? selectionKey : null,
-      currentBillNo: isPrinted ? billNo : null,
+      selectedPrintedCustomer: null,
+      selectedUnprintedCustomer: null,
+      currentBillNo: null,
       editingSaleId: null,
       isManualClear: false,
       customerSearchInput: "",
       priceManuallyChanged: false,
-      bulkPrice: "", // Clear bulk price
+      bulkPrice: "",
+      selectedSaleForBreakdown: null,
+      gridPricePerKg: "",
+      loanAmount: 0,
     });
+    
+    return; // Stop here - we've deselected
+  }
 
-    const customer = customers.find(
-      (x) =>
-        String(x.short_name).toUpperCase() ===
-        String(customerCode).toUpperCase(),
-    );
+  // If not selected, SELECT it
+  updateState({
+    selectedPrintedCustomer: isPrinted ? selectionKey : null,
+    selectedUnprintedCustomer: !isPrinted ? selectionKey : null,
+    currentBillNo: isPrinted ? billNo : null,
+    editingSaleId: null,
+    isManualClear: false,
+    customerSearchInput: "",
+    priceManuallyChanged: false,
+    bulkPrice: "",
+    selectedSaleForBreakdown: null,
+  });
 
-    const totals = salesRecords.reduce(
-      (acc, s) => {
-        const weight = parseFloat(s.weight) || 0;
-        const price = parseFloat(s.price_per_kg) || 0;
-        const packs = parseFloat(s.packs) || 0;
-        const pCost = parseFloat(s.CustomerPackCost) || 0;
+  const customer = customers.find(
+    (x) =>
+      String(x.short_name).toUpperCase() ===
+      String(customerCode).toUpperCase(),
+  );
 
-        acc.billTotal += weight * price;
-        acc.totalBagPrice += packs * pCost;
+  // Calculate totals for the customer
+  const totals = salesRecords.reduce(
+    (acc, s) => {
+      const weight = parseFloat(s.weight) || 0;
+      const price = parseFloat(s.price_per_kg) || 0;
+      const packs = parseFloat(s.packs) || 0;
+      const pCost = parseFloat(s.CustomerPackCost) || 0;
 
-        return acc;
-      },
-      { billTotal: 0, totalBagPrice: 0 },
-    );
+      acc.billTotal += weight * price;
+      acc.totalBagPrice += packs * pCost;
 
-    const calculatedFinal = totals.billTotal + totals.totalBagPrice;
-    let fetchedGivenAmount = calculatedFinal.toFixed(2);
+      return acc;
+    },
+    { billTotal: 0, totalBagPrice: 0 },
+  );
 
-    if (isPrinted) {
-      try {
-        const response = await api.get(
-          `${routes.getCustomerGivenAmount}/${customerCode}`,
-        );
-        fetchedGivenAmount = response.data?.given_amount ?? fetchedGivenAmount;
-      } catch (error) {
-        fetchedGivenAmount =
-          salesRecords[0]?.given_amount || fetchedGivenAmount;
-      }
-    } else {
+  const calculatedFinal = totals.billTotal + totals.totalBagPrice;
+  let fetchedGivenAmount = calculatedFinal.toFixed(2);
+
+  if (isPrinted) {
+    try {
+      const response = await api.get(
+        `${routes.getCustomerGivenAmount}/${customerCode}`,
+      );
+      fetchedGivenAmount = response.data?.given_amount ?? fetchedGivenAmount;
+    } catch (error) {
       fetchedGivenAmount =
-        salesRecords[salesRecords.length - 1]?.given_amount ||
-        fetchedGivenAmount;
+        salesRecords[0]?.given_amount || fetchedGivenAmount;
     }
+  } else {
+    fetchedGivenAmount =
+      salesRecords[salesRecords.length - 1]?.given_amount ||
+      fetchedGivenAmount;
+  }
 
-    const lastSale =
-      salesRecords.length > 0 ? salesRecords[salesRecords.length - 1] : {};
+  setFormData({
+    ...initialFormData,
+    customer_code: customerCode,
+    customer_name: customer?.name || "",
+    telephone_no: customer?.telephone_no || "",
+    given_amount: fetchedGivenAmount,
+  });
 
-    setFormData({
-      ...initialFormData,
-      customer_code: customerCode,
-      customer_name: customer?.name || "",
-      telephone_no: customer?.telephone_no || "",
-      given_amount: fetchedGivenAmount,
-      supplier_code: lastSale.supplier_code || "",
-      item_code: lastSale.item_code || "",
-      item_name: lastSale.item_name || "",
-      weight: lastSale.weight || "",
-      price_per_kg: lastSale.price_per_kg || "",
-      packs: lastSale.packs || "",
-      kuliya: lastSale.Kuliya || "",
-      nattami: lastSale.Nattami || "",
-    });
+  updateState({ 
+    gridPricePerKg: "",
+  });
 
-    updateState({ gridPricePerKg: lastSale.price_per_kg || "" });
-
-    fetchLoanAmount(customerCode);
-    setTimeout(() => refs.supplier_code.current?.focus(), 50);
-  };
-
+  fetchLoanAmount(customerCode);
+  
+  setTimeout(() => refs.supplier_code.current?.focus(), 50);
+};
   const handleImageClick = (entityType) => {
     const code =
       entityType === "customer"
@@ -1398,141 +1407,139 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (state.isSubmitting) return;
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (state.isSubmitting) return;
 
-    const requiredFields = [
-      {
-        key: "customer_code",
-        ref: "customer_code_input",
-        label: "Customer Code",
+  const requiredFields = [
+    {
+      key: "customer_code",
+      ref: "customer_code_input",
+      label: "Customer Code",
+    },
+    { key: "supplier_code", ref: "supplier_code", label: "Supplier Code" },
+    { key: "item_code", ref: "item_code_select", label: "Item" },
+    { key: "weight", ref: "weight", label: "Weight" },
+    { key: "packs", ref: "packs", label: "Packs" },
+  ];
+
+  for (const field of requiredFields) {
+    const value = formData[field.key];
+    if (
+      value === null ||
+      value === undefined ||
+      value.toString().trim() === ""
+    ) {
+      updateState({
+        errors: { form: `කරුණාකර ${field.label} ඇතුළත් කරන්න` },
+      });
+      const targetRef = refs[field.ref];
+      if (targetRef?.current) {
+        targetRef.current.focus();
+        if (!field.ref.includes("select")) targetRef.current.select();
+      }
+      return;
+    }
+  }
+
+  updateState({ errors: {}, isSubmitting: true });
+
+  const customerCode = (
+    formData.customer_code || autoCustomerCode
+  ).toUpperCase();
+  const currentSupplierCode = formData.supplier_code;
+  const currentCustomerName = formData.customer_name;
+  const currentTelephone = formData.telephone_no;
+  const shouldUpdateRelatedPrice = state.priceManuallyChanged;
+
+  try {
+    const isEditing = editingSaleId !== null;
+
+    let billPrintedStatus = undefined,
+      billNoToUse = null;
+    if (!isEditing) {
+      if (state.currentBillNo) {
+        billPrintedStatus = "Y";
+        billNoToUse = state.currentBillNo;
+      } else if (selectedPrintedCustomer) {
+        billPrintedStatus = "Y";
+        billNoToUse = selectedPrintedCustomer.includes("-")
+          ? selectedPrintedCustomer.split("-")[1]
+          : printedSales.find(
+            (s) => s.customer_code === selectedPrintedCustomer,
+          )?.bill_no;
+      } else if (selectedUnprintedCustomer) {
+        billPrintedStatus = "N";
+      }
+    }
+
+    const activePrice = parseFloat(formData.price_per_kg) || 0;
+
+    const payload = {
+      supplier_code: currentSupplierCode.toUpperCase(),
+      customer_code: customerCode,
+      customer_name: currentCustomerName,
+      item_code: formData.item_code,
+      item_name: formData.item_name,
+      weight: parseFloat(formData.weight) || 0,
+      price_per_kg: activePrice,
+      pack_due: parseFloat(formData.pack_due) || 0,
+      total: parseFloat(formData.total) || 0,
+      packs: parseFloat(formData.packs) || 0,
+      given_amount: formData.given_amount
+        ? parseFloat(formData.given_amount)
+        : null,
+      kuliya: formData.kuliya ? parseFloat(formData.kuliya) : null,
+      nattami: formData.nattami ? parseFloat(formData.nattami) : null,
+      ...(billPrintedStatus && { bill_printed: billPrintedStatus }),
+      ...(billNoToUse && { bill_no: billNoToUse }),
+      update_related_price: shouldUpdateRelatedPrice,
+    };
+
+    const url = isEditing ? `${routes.sales}/${editingSaleId}` : routes.sales;
+    const method = isEditing ? "put" : "post";
+
+    await api[method](url, payload);
+
+    setFormData({
+      ...initialFormData,
+      customer_code: customerCode,
+      customer_name: currentCustomerName,
+      telephone_no: currentTelephone,
+      supplier_code: currentSupplierCode,
+    });
+
+    // FIX: Removed automatic selection of customer after submission
+    // The sale will appear in the main table under "newSales"
+    // User must manually click the customer in sidebar to view their unprinted sales
+    updateState({
+      editingSaleId: null,
+      isManualClear: false,
+      isSubmitting: false,
+      priceManuallyChanged: false,
+      gridPricePerKg: "",
+      // REMOVED: ...(!isEditing && !billPrintedStatus && { selectedUnprintedCustomer: customerCode, selectedPrintedCustomer: null }),
+    });
+
+    await fetchActiveSales();
+    await fetchAllSalesRecords();
+
+    if (refs.supplier_code.current) {
+      refs.supplier_code.current.focus();
+      refs.supplier_code.current.select();
+    }
+  } catch (error) {
+    updateState({
+      errors: {
+        form:
+          error.response?.data?.message ||
+          error.message ||
+          "An error occurred",
       },
-      { key: "supplier_code", ref: "supplier_code", label: "Supplier Code" },
-      { key: "item_code", ref: "item_code_select", label: "Item" },
-      { key: "weight", ref: "weight", label: "Weight" },
-      { key: "packs", ref: "packs", label: "Packs" },
-    ];
-
-    for (const field of requiredFields) {
-      const value = formData[field.key];
-      if (
-        value === null ||
-        value === undefined ||
-        value.toString().trim() === ""
-      ) {
-        updateState({
-          errors: { form: `කරුණාකර ${field.label} ඇතුළත් කරන්න` },
-        });
-        const targetRef = refs[field.ref];
-        if (targetRef?.current) {
-          targetRef.current.focus();
-          if (!field.ref.includes("select")) targetRef.current.select();
-        }
-        return;
-      }
-    }
-
-    updateState({ errors: {}, isSubmitting: true });
-
-    const customerCode = (
-      formData.customer_code || autoCustomerCode
-    ).toUpperCase();
-    const currentSupplierCode = formData.supplier_code;
-    const currentCustomerName = formData.customer_name;
-    const currentTelephone = formData.telephone_no;
-    const shouldUpdateRelatedPrice = state.priceManuallyChanged;
-
-    try {
-      const isEditing = editingSaleId !== null;
-
-      let billPrintedStatus = undefined,
-        billNoToUse = null;
-      if (!isEditing) {
-        if (state.currentBillNo) {
-          billPrintedStatus = "Y";
-          billNoToUse = state.currentBillNo;
-        } else if (selectedPrintedCustomer) {
-          billPrintedStatus = "Y";
-          billNoToUse = selectedPrintedCustomer.includes("-")
-            ? selectedPrintedCustomer.split("-")[1]
-            : printedSales.find(
-                (s) => s.customer_code === selectedPrintedCustomer,
-              )?.bill_no;
-        } else if (selectedUnprintedCustomer) {
-          billPrintedStatus = "N";
-        }
-      }
-
-      const activePrice = parseFloat(formData.price_per_kg) || 0;
-
-      const payload = {
-        supplier_code: currentSupplierCode.toUpperCase(),
-        customer_code: customerCode,
-        customer_name: currentCustomerName,
-        item_code: formData.item_code,
-        item_name: formData.item_name,
-        weight: parseFloat(formData.weight) || 0,
-        price_per_kg: activePrice,
-        pack_due: parseFloat(formData.pack_due) || 0,
-        total: parseFloat(formData.total) || 0,
-        packs: parseFloat(formData.packs) || 0,
-        given_amount: formData.given_amount
-          ? parseFloat(formData.given_amount)
-          : null,
-        kuliya: formData.kuliya ? parseFloat(formData.kuliya) : null,
-        nattami: formData.nattami ? parseFloat(formData.nattami) : null,
-        ...(billPrintedStatus && { bill_printed: billPrintedStatus }),
-        ...(billNoToUse && { bill_no: billNoToUse }),
-        update_related_price: shouldUpdateRelatedPrice,
-      };
-
-      const url = isEditing ? `${routes.sales}/${editingSaleId}` : routes.sales;
-      const method = isEditing ? "put" : "post";
-
-      await api[method](url, payload);
-
-      setFormData({
-        ...initialFormData,
-        customer_code: customerCode,
-        customer_name: currentCustomerName,
-        telephone_no: currentTelephone,
-        supplier_code: currentSupplierCode,
-      });
-
-      updateState({
-        editingSaleId: null,
-        isManualClear: false,
-        isSubmitting: false,
-        priceManuallyChanged: false,
-        gridPricePerKg: "",
-        ...(!isEditing &&
-          !billPrintedStatus && {
-            selectedUnprintedCustomer: customerCode,
-            selectedPrintedCustomer: null,
-          }),
-      });
-
-      await fetchActiveSales();
-      await fetchAllSalesRecords();
-
-      if (refs.supplier_code.current) {
-        refs.supplier_code.current.focus();
-        refs.supplier_code.current.select();
-      }
-    } catch (error) {
-      updateState({
-        errors: {
-          form:
-            error.response?.data?.message ||
-            error.message ||
-            "An error occurred",
-        },
-        isSubmitting: false,
-      });
-    }
-  };
-
+      isSubmitting: false,
+    });
+  }
+};
   const handleKeyDown = async (e, currentFieldName) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -1824,6 +1831,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
             borderRadius: "0.75rem",
             height: "100%",
             overflow: "hidden",
+            marginTop: "-30px"
           }}
         >
           {hasData ? (
@@ -1850,7 +1858,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
           ) : (
             <div
               className="w-full shadow-xl rounded-xl overflow-y-auto border border-black p-4 text-center"
-              style={{ backgroundColor: "#1ec139ff", height: "100%" }}
+              style={{ backgroundColor: "#1ec139ff", height: "100%", marginTop: "-15px" }}
             >
               <div
                 style={{ backgroundColor: "#006400" }}
@@ -1875,15 +1883,17 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
           className="center-form flex flex-col shadow-xl"
           style={{
             backgroundColor: "#111439ff",
-            padding: "15px 20px", // ✅ REDUCED PADDING TO GIVE TABLE MORE ROOM
+            padding: "15px 20px",
             borderRadius: "0.75rem",
             color: "white",
-            height: "100%",
-            minHeight: "0",
+            minHeight: "100vh", // Full viewport height minimum
             boxSizing: "border-box",
             gridColumnStart: 2,
             gridColumnEnd: 3,
             width: "100%",
+            alignSelf: "flex-start",
+            marginTop: "-35px",
+            height: "auto", // Allow height to grow with content
           }}
         >
           {currentUser?.role === "Admin" ? (
@@ -1933,6 +1943,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             display: "flex",
                             alignItems: "center",
                             gap: "8px",
+                            marginTop: "10px",
                           }}
                         >
                           <input
@@ -1976,7 +1987,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                           className="cursor-pointer hover:scale-105 transition-transform"
                           style={{
                             position: "absolute",
-                            right: "150px",
+                            right: "340px",
                             top: "80px",
                             display: "flex",
                             flexDirection: "row",
@@ -2183,9 +2194,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                         value={
                           formData.customer_code
                             ? {
-                                value: formData.customer_code,
-                                label: `${formData.customer_code}`,
-                              }
+                              value: formData.customer_code,
+                              label: `${formData.customer_code}`,
+                            }
                             : null
                         }
                         onChange={handleCustomerSelect}
@@ -2194,7 +2205,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             (c) =>
                               !customerSearchInput ||
                               (c.short_name || "").charAt(0).toUpperCase() ===
-                                customerSearchInput.charAt(0).toUpperCase(),
+                              customerSearchInput.charAt(0).toUpperCase(),
                           )
                           .map((c) => ({
                             value: c.short_name,
@@ -2397,9 +2408,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                             value={
                               formData.item_code
                                 ? {
-                                    value: formData.item_code,
-                                    label: `${formData.item_code} - ${formData.item_name}`,
-                                  }
+                                  value: formData.item_code,
+                                  label: `${formData.item_code} - ${formData.item_name}`,
+                                }
                                 : null
                             }
                             onInputChange={(value, meta) => {
@@ -2799,7 +2810,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
                               >
                                 {formatDecimal(
                                   (parseFloat(s.weight) || 0) *
-                                    (parseFloat(s.price_per_kg) || 0),
+                                  (parseFloat(s.price_per_kg) || 0),
                                 )}
                               </td>
                               <td
@@ -3282,6 +3293,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
             borderRadius: "0.75rem",
             height: "100%",
             overflow: "hidden",
+            marginTop: "-30px"
           }}
         >
           {hasData ? (

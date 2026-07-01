@@ -37,6 +37,7 @@ import FarmerLoanManager from './components/LoanManager/FarmerLoanManager';
 import SupplierReportPrinted from './components/Suppliers/SupplierReportPrinted';
 import SupplierLoanReport from './components/Reports/SupplierLoanReport'; 
 import SupplierFinalReport from './components/Reports/SupplierFullReport';
+import LorryTransactions from './components/LorryTransactions/LorryTransactions';
 
 // Import Layout
 import Layout from './components/Layout/Layout';
@@ -497,6 +498,8 @@ export default function App() {
                 <Route path="/view-bill/:token" element={<PublicBill />} />
                 <Route path="/suppliers/dobreport" element={<SupplierdobReport />} />
                 <Route path="/view-supplier-bill/:token" element={<ViewSupplierBill />} />
+               
+                <Route path="/lorry-transactions" element={<LorryTransactions />} />
                 
                 {/* Protected Routes with Layout */}
                 <Route 
