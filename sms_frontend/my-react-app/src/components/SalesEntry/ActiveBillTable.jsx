@@ -111,40 +111,40 @@ export default function ActiveBillTable({
                 className="border text-right pr-3"
                 style={{ padding: "10px 6px" }}
               >
-                {formatDecimal(s.weight)}
+                {formatDecimal(Math.abs(parseFloat(s.weight) || 0))}
               </td>
               <td
                 className="border text-right pr-3"
                 style={{ padding: "10px 6px" }}
               >
-                {formatDecimal(s.price_per_kg)}
+                {formatDecimal(Math.abs(parseFloat(s.price_per_kg) || 0))}
               </td>
               <td
                 className="border text-right pr-3"
                 style={{ padding: "10px 6px" }}
               >
                 {formatDecimal(
-                  (parseFloat(s.weight) || 0) *
-                    (parseFloat(s.price_per_kg) || 0),
+                  Math.abs(parseFloat(s.weight) || 0) *
+                    Math.abs(parseFloat(s.price_per_kg) || 0),
                 )}
               </td>
               <td
                 className="border text-center"
                 style={{ padding: "10px 6px" }}
               >
-                {s.packs}
+                {Math.abs(parseInt(s.packs) || 0)}
               </td>
               <td
                 className="border text-red-500 font-bold text-right pr-3"
                 style={{ padding: "10px 6px" }}
               >
-                {formatDecimal(s.Kuliya)}
+                {formatDecimal(Math.abs(parseFloat(s.Kuliya) || 0))}
               </td>
               <td
                 className="border text-orange-500 font-bold text-right pr-3"
                 style={{ padding: "10px 6px" }}
               >
-                {formatDecimal(s.Nattami)}
+                {formatDecimal(Math.abs(parseFloat(s.Nattami) || 0))}
               </td>
               <td
                 className="border text-center"

@@ -1,98 +1,130 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useEffect, useState, useCallback } from "react";
+import { useParams } from "react-router-dom";
 import api from "../api";
 
 const ViewSupplierBill = () => {
-    const { token } = useParams();
-    const [bill, setBill] = useState(null);
-    const [billSize, setBillSize] = useState('3inch'); // Changed to '3inch' to match the format
-    const [loading, setLoading] = useState(true);
+  const { token } = useParams();
+  const [bill, setBill] = useState(null);
+  const [billSize, setBillSize] = useState("3inch"); // Default to '3inch' to match the format
+  const [loading, setLoading] = useState(true);
 
-    // Configuration
-    const mobile = '0777672838/071437115';
-    const is4Inch = billSize === '4inch';
-    const receiptMaxWidth = is4Inch ? '4in' : '350px';
-    const fontSizeBody = '18px';
-    const fontSizeHeader = '18px';
-    const fontSizeTotal = '28px';
+  // Configuration settings for bill dimensions and fonts
+  const mobile = "0777672838/071437115";
+  const is4Inch = billSize === "4inch";
+  const receiptMaxWidth = is4Inch ? "4in" : "350px";
+  const fontSizeBody = "18px";
+  const fontSizeHeader = "18px";
+  const fontSizeTotal = "28px";
 
-    useEffect(() => {
-        fetchBillData();
-    }, [token]);
+  // Fetch bill data on component mount
+  useEffect(() => {
+    fetchBillData();
+  }, [token]);
 
-    const fetchBillData = () => {
-        setLoading(true);
-        api.get(`https://goviraju.lk/DBS_backend_30500/api/public/supplier-bill/${token}`)
-            .then(res => {
-                setBill(res.data);
-                if (res.data && res.data.bill_no) {
-                    document.title = `${res.data.bill_no}`;
-                }
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error("Error fetching bill:", err);
-                setLoading(false);
-            });
-    };
-
-    const handlePrint = () => {
-        if (bill && bill.bill_no) {
-            document.title = `${bill.bill_no}`;
+  const fetchBillData = () => {
+    setLoading(true);
+    api
+      .get(
+        `https://goviraju.lk/vts_sales_backend/api/public/supplier-bill/${token}`,
+      )
+      .then((res) => {
+        setBill(res.data);
+        if (res.data && res.data.bill_no) {
+          document.title = `${res.data.bill_no}`;
         }
-        window.print();
-    };
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Error fetching bill:", err);
+        setLoading(false);
+      });
+  };
 
-    const toggleBillSize = () => {
-        setBillSize(billSize === '3inch' ? '4inch' : '3inch');
-    };
+  const handlePrint = () => {
+    if (bill && bill.bill_no) {
+      document.title = `${bill.bill_no}`;
+    }
+    window.print();
+  };
 
-    const formatNumber = (value, maxDecimals = 3) => {
-        if (typeof value !== 'number' && typeof value !== 'string') return '0';
-        const number = parseFloat(value);
-        if (isNaN(number)) return '0';
-        if (Number.isInteger(number)) return number.toLocaleString('en-US');
-        const parts = number.toFixed(maxDecimals).replace(/\.?0+$/, '').split('.');
-        const wholePart = parseInt(parts[0]).toLocaleString('en-US');
-        return parts[1] ? `${wholePart}.${parts[1]}` : wholePart;
-    };
+  const toggleBillSize = () => {
+    setBillSize(billSize === "3inch" ? "4inch" : "3inch");
+  };
 
-    const formatDecimal = (value, decimals = 2) => (parseFloat(value) || 0).toLocaleString(undefined, {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-    });
+  // Helper functions for number formatting
+  const formatNumber = (value, maxDecimals = 3) => {
+    if (typeof value !== "number" && typeof value !== "string") return "0";
+    const number = parseFloat(value);
+    if (isNaN(number)) return "0";
+    if (Number.isInteger(number)) return number.toLocaleString("en-US");
+    const parts = number
+      .toFixed(maxDecimals)
+      .replace(/\.?0+$/, "")
+      .split(".");
+    const wholePart = parseInt(parts[0]).toLocaleString("en-US");
+    return parts[1] ? `${wholePart}.${parts[1]}` : wholePart;
+  };
 
-    if (loading) return <div style={{ padding: '20px', textAlign: 'center' }}>Loading Bill...</div>;
-    if (!bill) return <div style={{ padding: '20px', textAlign: 'center', color: 'red' }}>Bill Not Found</div>;
+  if (loading)
+    return (
+      <div style={{ padding: "20px", textAlign: "center" }}>
+        Loading Bill...
+      </div>
+    );
+  if (!bill)
+    return (
+      <div style={{ padding: "20px", textAlign: "center", color: "red" }}>
+        Bill Not Found
+      </div>
+    );
 
-    // Data Parsing
-    const items = typeof bill.sales_data === 'string' 
-        ? JSON.parse(bill.sales_data) 
-        : bill.sales_data || [];
-    
-    const advanceAmount = parseFloat(bill.advance_amount || 0);
-    const totalsupplierSales = items.reduce((s, i) => s + (parseFloat(i.SupplierTotal) || 0), 0);
-    const totalPacksSum = items.reduce((s, i) => s + (parseInt(i.packs) || 0), 0);
-    const totalCustomerPackCost = items.reduce((s, i) => s + (parseFloat(i.CustomerPackCost) || 0), 0);
-    const netPayable = totalsupplierSales - advanceAmount + totalCustomerPackCost;
-    const date = new Date().toLocaleDateString('si-LK');
-    const time = new Date().toLocaleTimeString('si-LK', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  // Parse sales data from the API response
+  const items =
+    typeof bill.sales_data === "string"
+      ? JSON.parse(bill.sales_data)
+      : bill.sales_data || [];
 
-    // Build item summary data
-    const itemSummaryData = {};
-    items.forEach(record => {
-        const itemName = record.item_name || 'Unknown Item';
-        const weight = parseFloat(record.weight) || 0;
-        const packs = parseInt(record.packs) || 0;
-        
-        if (!itemSummaryData[itemName]) {
-            itemSummaryData[itemName] = { totalWeight: 0, totalPacks: 0 };
-        }
-        itemSummaryData[itemName].totalWeight += weight;
-        itemSummaryData[itemName].totalPacks += packs;
-    });
+  const advanceAmount = parseFloat(bill.advance_amount || 0);
 
-    const colGroups = `
+  // Calculate total values from items array
+  const totalsupplierSales = items.reduce(
+    (s, i) => s + (parseFloat(i.SupplierTotal) || 0),
+    0,
+  );
+  const totalPacksSum = items.reduce((s, i) => s + (parseInt(i.packs) || 0), 0);
+  const totalCustomerPackCost = items.reduce(
+    (s, i) => s + (parseFloat(i.CustomerPackCost) || 0),
+    0,
+  );
+
+  // UPDATED LOGIC: Add advanceAmount to the total sales and pack cost instead of subtracting
+  const netPayable = totalsupplierSales + advanceAmount + totalCustomerPackCost;
+
+  // Setup date and time formatting
+  const date = new Date().toLocaleDateString("si-LK");
+  const time = new Date().toLocaleTimeString("si-LK", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
+  // Build item summary data (Group by item name)
+  const itemSummaryData = {};
+  items.forEach((record) => {
+    const itemName = record.item_name || "Unknown Item";
+    const weight = parseFloat(record.weight) || 0;
+    const packs = parseInt(record.packs) || 0;
+
+    if (!itemSummaryData[itemName]) {
+      itemSummaryData[itemName] = { totalWeight: 0, totalPacks: 0 };
+    }
+    itemSummaryData[itemName].totalWeight += weight;
+    itemSummaryData[itemName].totalPacks += packs;
+  });
+
+  // HTML Generation for Columns
+  const colGroups = `
     <colgroup>
         <col style="width:32%;"> 
         <col style="width:21%;">
@@ -100,15 +132,17 @@ const ViewSupplierBill = () => {
         <col style="width:26%;">
     </colgroup>`;
 
-    const detailedItemsHtml = items.map(record => {
-        const weight = parseFloat(record.weight) || 0;
-        const packs = parseInt(record.packs) || 0;
-        const price = parseFloat(record.SupplierPricePerKg) || 0;
-        const total = parseFloat(record.SupplierTotal) || 0;
-        const itemName = record.item_name || '';
-        const customerCode = record.customer_code?.toUpperCase() || '';
+  // Generate detailed items table rows
+  const detailedItemsHtml = items
+    .map((record) => {
+      const weight = parseFloat(record.weight) || 0;
+      const packs = parseInt(record.packs) || 0;
+      const price = parseFloat(record.SupplierPricePerKg) || 0;
+      const total = parseFloat(record.SupplierTotal) || 0;
+      const itemName = record.item_name || "";
+      const customerCode = record.customer_code?.toUpperCase() || "";
 
-        return `
+      return `
         <tr style="font-size:${fontSizeBody}; font-weight:bold; vertical-align: bottom;">
             <td style="text-align:left; padding:10px 0; white-space: nowrap;">${itemName}<br>${formatNumber(packs)}</td>
             <td style="text-align:right; padding:10px 2px; position: relative; left: -70px;">${formatNumber(weight.toFixed(2))}</td>
@@ -118,19 +152,24 @@ const ViewSupplierBill = () => {
                 <div style="font-weight:900; white-space:nowrap;">${formatNumber(total.toFixed(2))}</div>
             </td>
         </tr>`;
-    }).join("");
+    })
+    .join("");
 
-    const summaryEntries = Object.entries(itemSummaryData);
-    let itemSummaryHtml = '';
-    for (let i = 0; i < summaryEntries.length; i += 2) {
-        const [name1, d1] = summaryEntries[i];
-        const [name2, d2] = summaryEntries[i + 1] || [null, null];
-        const text1 = `${name1}:${formatNumber(d1.totalWeight)}/${formatNumber(d1.totalPacks)}`;
-        const text2 = d2 ? `${name2}:${formatNumber(d2.totalWeight)}/${formatNumber(d2.totalPacks)}` : '';
-        itemSummaryHtml += `<tr><td style="padding:6px; width:50%; font-weight:bold; white-space:nowrap; font-size:14px;">${text1}</td><td style="padding:6px; width:50%; font-weight:bold; white-space:nowrap; font-size:14px;">${text2}</td></tr>`;
-    }
+  // Generate item summary grid (2 items per row)
+  const summaryEntries = Object.entries(itemSummaryData);
+  let itemSummaryHtml = "";
+  for (let i = 0; i < summaryEntries.length; i += 2) {
+    const [name1, d1] = summaryEntries[i];
+    const [name2, d2] = summaryEntries[i + 1] || [null, null];
+    const text1 = `${name1}:${formatNumber(d1.totalWeight)}/${formatNumber(d1.totalPacks)}`;
+    const text2 = d2
+      ? `${name2}:${formatNumber(d2.totalWeight)}/${formatNumber(d2.totalPacks)}`
+      : "";
+    itemSummaryHtml += `<tr><td style="padding:6px; width:50%; font-weight:bold; white-space:nowrap; font-size:14px;">${text1}</td><td style="padding:6px; width:50%; font-weight:bold; white-space:nowrap; font-size:14px;">${text2}</td></tr>`;
+  }
 
-    const billContent = `
+  // Construct the full HTML template for the bill
+  const billContent = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -189,7 +228,7 @@ const ViewSupplierBill = () => {
         <tfoot>
             <tr style="border-top:2.5px solid #000; font-weight:bold;">
                 <td style="padding-top:12px; font-size:${fontSizeTotal};">${formatNumber(totalPacksSum)}</td>
-                <td colspan="3" style="padding-top:12px; font-size:${fontSizeTotal};"><div style="text-align:right; float:right; white-space:nowrap;">${(totalsupplierSales.toFixed(2))}</div></td>
+                <td colspan="3" style="padding-top:12px; font-size:${fontSizeTotal};"><div style="text-align:right; float:right; white-space:nowrap;">${totalsupplierSales.toFixed(2)}</div></td>
             </tr>
         </tfoot>
     </table>
@@ -197,22 +236,24 @@ const ViewSupplierBill = () => {
     <table style="width:100%; margin-top:20px; font-weight:bold; font-size:22px; padding:0 5px;">
         <tr>
             <td style="font-size:15px; white-space:nowrap; position:relative; left:-15px;">මෙම බිලට මුළු අගය:</td>
-            <td style="text-align:right;"><span style="border-bottom:2px solid #000; font-size:${fontSizeTotal}; padding:5px 10px;">${(totalsupplierSales.toFixed(2))}</span></td>
+            <td style="text-align:right;"><span style="border-bottom:2px solid #000; font-size:${fontSizeTotal}; padding:5px 10px;">${totalsupplierSales.toFixed(2)}</span></td>
         </tr>
         <tr>
             <td style="font-size:15px; white-space:nowrap; position:relative; left:-15px;">මලු වියදම:</td>
             <td style="text-align:right;"><span style="font-size:${fontSizeTotal}; padding:5px 10px;">${totalCustomerPackCost.toFixed(2)}</span></td>
         </tr>
 
+        <!-- UPDATED ROW: Shows Advance/Loan addition with a '+' sign -->
         <tr style="font-size:18px;">
-            <td style="font-size:15px; padding-top:5px;">අත්තිකාරම්</td>
+            <td style="font-size:15px; padding-top:5px;">එකතු විය යුතු ණය/අත්තිකාරම්</td>
             <td style="text-align:right; padding-top:5px; color:#000;">
-                - ${advanceAmount.toFixed(2)}
+                + ${advanceAmount.toFixed(2)}
             </td>
         </tr>
 
+        <!-- UPDATED ROW: Final net payable amount reflecting the addition -->
         <tr style="font-weight:900;">
-            <td style="font-size:18px; padding-top:10px;">ශුද්ධ ඉතිරි ශේෂය:</td>
+            <td style="font-size:18px; padding-top:10px;">අවසන් මුළු එකතුව:</td>
             <td style="text-align:right; padding-top:10px;">
                 <span style="color:#000; font-size:${fontSizeTotal}; border-bottom:5px double #000; border-top:2px solid #000;">
                     ${netPayable.toFixed(2)}
@@ -226,67 +267,74 @@ const ViewSupplierBill = () => {
 </body>
 </html>`;
 
-    return (
-        <div style={{ padding: '20px', background: '#f0f0f0', minHeight: '100vh' }}>
-            <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', marginBottom: '20px' }}>
-                <button 
-                    onClick={toggleBillSize}
-                    className="no-print"
-                    style={{ 
-                        padding: '12px 24px', 
-                        cursor: 'pointer', 
-                        backgroundColor: '#2563eb', 
-                        color: 'white', 
-                        border: 'none', 
-                        borderRadius: '5px',
-                        fontWeight: 'bold',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                    }}
-                >
-                    බිල්පත් ප්‍රමාණය: {billSize}
-                </button>
-                <button 
-                    onClick={handlePrint} 
-                    className="no-print"
-                    style={{ 
-                        padding: '12px 24px', 
-                        cursor: 'pointer', 
-                        backgroundColor: '#007bff', 
-                        color: 'white', 
-                        border: 'none', 
-                        borderRadius: '5px',
-                        fontWeight: 'bold',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                    }}
-                >
-                    📥 Download PDF (Bill: {bill.bill_no})
-                </button>
-            </div>
+  return (
+    <div style={{ padding: "20px", background: "#f0f0f0", minHeight: "100vh" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "20px",
+          justifyContent: "center",
+          marginBottom: "20px",
+        }}
+      >
+        <button
+          onClick={toggleBillSize}
+          className="no-print"
+          style={{
+            padding: "12px 24px",
+            cursor: "pointer",
+            backgroundColor: "#2563eb",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            fontWeight: "bold",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+          }}
+        >
+          බිල්පත් ප්‍රමාණය: {billSize}
+        </button>
+        <button
+          onClick={handlePrint}
+          className="no-print"
+          style={{
+            padding: "12px 24px",
+            cursor: "pointer",
+            backgroundColor: "#007bff",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            fontWeight: "bold",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+          }}
+        >
+          📥 Download PDF (Bill: {bill.bill_no})
+        </button>
+      </div>
 
-            {/* MAIN RECEIPT CONTAINER */}
-            <div 
-                id="bill-content"
-                style={{ 
-                    width: receiptMaxWidth, 
-                    margin: '0 auto', 
-                    padding: '10px', 
-                    fontFamily: "'Courier New', monospace", 
-                    color: '#000', 
-                    background: '#fff',
-                    boxShadow: '0 0 10px rgba(0,0,0,0.1)' 
-                }}
-                dangerouslySetInnerHTML={{ __html: billContent }}
-            />
+      {/* MAIN RECEIPT CONTAINER */}
+      <div
+        id="bill-content"
+        style={{
+          width: receiptMaxWidth,
+          margin: "0 auto",
+          padding: "10px",
+          fontFamily: "'Courier New', monospace",
+          color: "#000",
+          background: "#fff",
+          boxShadow: "0 0 10px rgba(0,0,0,0.1)",
+        }}
+        dangerouslySetInnerHTML={{ __html: billContent }}
+      />
 
-            <style>{`
+      <style>{`
                 @media print {
                     .no-print { display: none !important; }
                     body { background: white !important; padding: 0 !important; }
                     @page { margin: 0; }
                 }
             `}</style>
-        </div>
-    );
+    </div>
+  );
 };
 
 export default ViewSupplierBill;

@@ -1822,4 +1822,55 @@ public function getFarmerBillDetails(Request $request, $billNo, $supplierCode)
         ->where('supplier_code', $supplierCode)
         ->get();
 }
+
+// --- Farmer Loan Receivable & Payable Report ---
+    public function getFarmerLoanPayableReport(\Illuminate\Http\Request $request)
+    {
+        $date = \App\Models\Setting::where('key', 'Date')->value('value') ?? now()->toDateString();
+        $companyName = \App\Models\Setting::where('key', 'CompanyName')->value('value') ?? 'Default Company';
+
+        $suppliers = \App\Models\Supplier::orderBy('code', 'asc')->get();
+        
+        $reportData = [];
+        $totalReceivable = 0;
+        $totalPayable = 0;
+
+        foreach ($suppliers as $supplier) {
+            $receivable = 0;
+            $payable = 0;
+            
+            // Convert advance_amount safely to float
+            $advance_amount = (float) $supplier->advance_amount;
+
+            // Advance Amount Positive (+) = Shop needs to receive (ලැබිය යුතු)
+            // Advance Amount Negative (-) = Shop needs to pay (ගෙවිය යුතු)
+            if ($advance_amount > 0) {
+                $receivable = $advance_amount;
+            } elseif ($advance_amount < 0) {
+                $payable = abs($advance_amount);
+            }
+
+            if ($receivable > 0 || $payable > 0) {
+                $reportData[] = [
+                    'code' => $supplier->code,
+                    'name' => $supplier->name,
+                    'receivable' => $receivable,
+                    'payable' => $payable
+                ];
+                
+                $totalReceivable += $receivable;
+                $totalPayable += $payable;
+            }
+        }
+
+        return response()->json([
+            'companyName' => $companyName,
+            'reportDate' => now()->format('Y-m-d H:i:s A'),
+            'filterDate' => \Carbon\Carbon::parse($date)->format('Y-m-d'),
+            'data' => $reportData,
+            'totalReceivable' => $totalReceivable,
+            'totalPayable' => $totalPayable
+        ]);
+    }
+
 }

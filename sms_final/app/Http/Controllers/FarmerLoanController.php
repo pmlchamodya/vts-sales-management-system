@@ -73,4 +73,56 @@ class FarmerLoanController extends Controller
         'balance' => (float)$balance
     ]);
 }
+// --- FETCH FARMER LOAN BREAKDOWN ---
+    public function getBreakdown($code)
+    {
+        $supplier = Supplier::where('code', $code)->first();
+        if (!$supplier) {
+            return response()->json(['error' => 'Farmer not found'], 404);
+        }
+
+        // Fetch old (+) and today (-) loans for the farmer
+        $loans = FarmerLoan::where('supplier_code', $code)
+            ->whereIn('loan_type', ['old', 'today'])
+            ->orderBy('Date', 'asc')
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        $breakdown = [];
+        $runningBalance = 0;
+
+        foreach ($loans as $loan) {
+            $increase = 0;
+            $decrease = 0;
+
+            if ($loan->loan_type === 'old') {
+                // old = ගොවි ණයට එකතු කිරීම (+)
+                $increase = abs($loan->amount); 
+                $runningBalance += $increase;
+            } elseif ($loan->loan_type === 'today') {
+                // today = ගොවියන්ගේ ණය ගෙවීම (-)
+                $decrease = abs($loan->amount); 
+                $runningBalance -= $decrease;
+            }
+
+            $displayDate = $loan->Date ?? \Carbon\Carbon::parse($loan->created_at)->format('Y-m-d');
+
+            $breakdown[] = [
+                'date' => $displayDate,
+                'description' => $loan->description,
+                'bill_no' => $loan->bill_no,
+                'decrease' => $decrease > 0 ? number_format($decrease, 2) : '',
+                'increase' => $increase > 0 ? number_format($increase, 2) : '',
+                'balance' => number_format($runningBalance, 2)
+            ];
+        }
+
+        return response()->json([
+            'customer_name' => $supplier->name,
+            'customer_short_name' => $supplier->code,
+            'report_date' => now()->format('Y-m-d H:i:s A'),
+            'data' => $breakdown,
+            'final_balance' => number_format($runningBalance, 2)
+        ]);
+    }
 }

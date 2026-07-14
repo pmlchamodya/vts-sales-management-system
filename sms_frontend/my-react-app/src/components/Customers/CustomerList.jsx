@@ -11,7 +11,7 @@ export default function CustomerList() {
   const navigate = useNavigate();
 
   const STORAGE_URL =
-    "https://goviraju.lk/DBS_backend_30500/application/public/storage/";
+    "https://goviraju.lk/vts_sales_backend/application/public/storage/";
 
   const fetchCustomers = async () => {
     try {

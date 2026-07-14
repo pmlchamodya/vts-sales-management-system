@@ -8,7 +8,14 @@ export default function AllSalesRecords({
   formatDecimal,
 }) {
   return (
-    <>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        height: "auto",
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -16,7 +23,6 @@ export default function AllSalesRecords({
           alignItems: "center",
           marginBottom: "8px",
           padding: "0 4px",
-          flexShrink: 0,
         }}
       >
         <span style={{ color: "#888", fontSize: "15px", fontWeight: "bold" }}>
@@ -27,16 +33,15 @@ export default function AllSalesRecords({
         )}
       </div>
 
+      {/* 🔴 Scroll එක ඉවත් කර Table එක සම්පූර්ණයෙන්ම දිග ඇරෙන්න සකසා ඇත 🔴 */}
       <div
         style={{
-          flex: 1,
-          overflowY: "auto",
-          overflowX: "hidden",
+          width: "100%",
           border: "1px solid #4a5568",
           borderRadius: "0.5rem",
           backgroundColor: "#1a1a2e",
-          minHeight: 0,
-          width: "100%",
+          overflowX: "auto",
+          height: "auto",
         }}
       >
         <table
@@ -179,13 +184,15 @@ export default function AllSalesRecords({
                     {sale.item_name || "-"}
                   </td>
                   <td style={{ padding: "10px 6px", textAlign: "right" }}>
-                    {formatDecimal(sale.weight)}
+                    {formatDecimal(Math.abs(parseFloat(sale.weight) || 0))}
                   </td>
                   <td style={{ padding: "10px 6px", textAlign: "right" }}>
-                    {formatDecimal(sale.price_per_kg)}
+                    {formatDecimal(
+                      Math.abs(parseFloat(sale.price_per_kg) || 0),
+                    )}
                   </td>
                   <td style={{ padding: "10px 6px", textAlign: "right" }}>
-                    {sale.packs || "0"}
+                    {Math.abs(parseInt(sale.packs) || 0)}
                   </td>
                   <td
                     style={{
@@ -194,7 +201,7 @@ export default function AllSalesRecords({
                       color: sale.Kuliya > 0 ? "#ffd700" : "#888",
                     }}
                   >
-                    {formatDecimal(sale.Kuliya || 0)}
+                    {formatDecimal(Math.abs(parseFloat(sale.Kuliya) || 0))}
                   </td>
                   <td
                     style={{
@@ -203,7 +210,7 @@ export default function AllSalesRecords({
                       color: sale.Nattami > 0 ? "#ff9800" : "#888",
                     }}
                   >
-                    {formatDecimal(sale.Nattami || 0)}
+                    {formatDecimal(Math.abs(parseFloat(sale.Nattami) || 0))}
                   </td>
                   <td
                     style={{
@@ -213,7 +220,7 @@ export default function AllSalesRecords({
                       color: "#4ade80",
                     }}
                   >
-                    {formatDecimal(sale.total || 0)}
+                    {formatDecimal(Math.abs(parseFloat(sale.total) || 0))}
                   </td>
                 </tr>
               ))
@@ -230,8 +237,7 @@ export default function AllSalesRecords({
             borderRadius: "0.5rem",
             display: "flex",
             justifyContent: "space-between",
-            marginTop: "6px",
-            flexShrink: 0,
+            marginTop: "10px",
             width: "100%",
           }}
         >
@@ -242,7 +248,7 @@ export default function AllSalesRecords({
             Total Weight:{" "}
             {formatDecimal(
               allSalesRecords.reduce(
-                (sum, s) => sum + (parseFloat(s.weight) || 0),
+                (sum, s) => sum + Math.abs(parseFloat(s.weight) || 0),
                 0,
               ),
             )}{" "}
@@ -254,13 +260,13 @@ export default function AllSalesRecords({
             Total Value: Rs.{" "}
             {formatDecimal(
               allSalesRecords.reduce(
-                (sum, s) => sum + (parseFloat(s.total) || 0),
+                (sum, s) => sum + Math.abs(parseFloat(s.total) || 0),
                 0,
               ),
             )}
           </span>
         </div>
       )}
-    </>
+    </div>
   );
 }

@@ -27,7 +27,11 @@ export const ThermalBillHTML = ({
   };
 
   const date = new Date().toLocaleDateString("en-US");
-  const time = new Date().toLocaleTimeString("en-US");
+  const time = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "numeric",
+    hour12: true,
+  });
 
   const groupedById = new Map();
   salesData.forEach((s) => {
@@ -83,8 +87,12 @@ export const ThermalBillHTML = ({
     (sum, item) => sum + item.totalPacks,
     0,
   );
+
+  // Calculations
   const finalGrandTotal =
     totalSales + totalPackCost + totalKuliyaSum + totalNattamiSum;
+  const loanAmount = Math.abs(parseFloat(globalLoanAmount || 0));
+  const netTotal = finalGrandTotal + loanAmount;
 
   const receiptMaxWidth = billSize === "4inch" ? "380px" : "320px";
 
@@ -188,7 +196,6 @@ export const ThermalBillHTML = ({
             </table>
 
             <!-- Totals Table -->
-            <!-- ✅ FIXED: Made this table use the EXACT SAME column widths as the table above -->
             <table style="width: 100%; border-collapse: collapse; font-size: 13px; font-weight: bold; border-top: 1px solid #000; margin-top: 2px;">
                 <colgroup>
                     <col style="width: 25%;">
@@ -203,7 +210,7 @@ export const ThermalBillHTML = ({
                     <td style="text-align: center; padding-top: 4px;">${totalPacksSum}</td>
                     <td colspan="2"></td>
                     <td style="text-align: right; padding-top: 4px;">${formatNumber(totalSales)}</td>
-                    <td></td> <!-- ✅ Empty 6th column to match 'අයිතිය' -->
+                    <td></td>
                 </tr>
                 ${
                   totalPackCost > 0
@@ -211,20 +218,19 @@ export const ThermalBillHTML = ({
                 <tr>
                     <td colspan="4" style="text-align: left; padding-top: 2px;">පෙට්ටි / මලු</td>
                     <td style="text-align: right; padding-top: 2px;">${formatNumber(totalPackCost)}</td>
-                    <td></td> <!-- ✅ Empty 6th column -->
+                    <td></td> 
                 </tr>`
                     : ""
                 }
-                ${
-                  totalKuliyaSum > 0
-                    ? `
+
+                <!-- කුලිය සෑම විටම බිල්පතේ පෙන්වීම -->
                 <tr>
                     <td colspan="4" style="text-align: left; padding-top: 2px;">කුලිය</td>
                     <td style="text-align: right; padding-top: 2px;">${formatNumber(totalKuliyaSum)}</td>
-                    <td></td> <!-- ✅ Empty 6th column -->
-                </tr>`
-                    : ""
-                }
+                    <td></td>
+                </tr>
+
+                <!-- 21,850.00 මුළු එකතුව -->
                 <tr>
                     <td colspan="4"></td>
                     <td style="text-align: right; padding-top: 2px;">
@@ -232,22 +238,38 @@ export const ThermalBillHTML = ({
                             ${formatNumber(finalGrandTotal)}
                         </div>
                     </td>
-                    <td></td> <!-- ✅ Empty 6th column -->
+                    <td></td> 
                 </tr>
-            </table>
-
-            <!-- Bottom Info -->
-            <table style="width: 100%; margin-top: 10px; font-size: 13px; font-weight: bold; border-collapse: collapse;">
+                
+                <!-- හිඟය වම් පසට සහ අවසන් එකතුව දකුණු පසට (Font Size 22px) -->
+                ${
+                  loanAmount !== 0
+                    ? `
                 <tr>
-                    <td style="text-align: left; width: 60%;">${date} &nbsp;&nbsp;&nbsp; මුදල් ලැබුණා</td>
-                    <td style="text-align: right; width: 40%; font-size: 14px;"></td>
+                    <td colspan="4" style="text-align: left; padding-top: 15px; font-size: 13px; vertical-align: bottom;">
+                        <div style="margin-bottom: 4px;">${date} &nbsp;&nbsp;&nbsp; මුදල් ලැබුණා</div>
+                        <div style="margin-bottom: 4px;">නාට්ටාමි: ${formatNumber(totalNattamiSum)}</div>
+                        <div style="font-size: 15px; font-weight: 900;">හිඟ : ${formatNumber(loanAmount)}</div>
+                    </td>
+                    <td style="text-align: right; padding-top: 15px; font-size: 22px; font-weight: bold; vertical-align: bottom;">
+                        ${formatNumber(netTotal)}
+                    </td>
+                    <td></td>
                 </tr>
+                    `
+                    : `
                 <tr>
-                    <td style="text-align: left;">නාට්ටාමි: ${formatNumber(totalNattamiSum)}</td>
-                    <td style="text-align: right;">හිග : &nbsp;&nbsp; ${formatNumber(globalLoanAmount)}</td>
+                    <td colspan="4" style="text-align: left; padding-top: 15px; font-size: 13px; vertical-align: bottom;">
+                        <div style="margin-bottom: 4px;">${date} &nbsp;&nbsp;&nbsp; මුදල් ලැබුණා</div>
+                        <div>නාට්ටාමි: ${formatNumber(totalNattamiSum)}</div>
+                    </td>
+                    <td colspan="2"></td>
                 </tr>
+                    `
+                }
+                <!-- අවසාන භාණ්ඩ විස්තරය -->
                 <tr>
-                    <td colspan="2" style="text-align: left; font-size: 11px; padding-top: 4px;">
+                    <td colspan="6" style="text-align: left; font-size: 11px; padding-top: 8px;">
                         ${summaryHtmlContentInline}
                     </td>
                 </tr>
@@ -262,7 +284,6 @@ export const ThermalBillHTML = ({
     </html>`;
 };
 
-// A4 Template is exactly identical visually, but allows wider scaling if selected from the dropdown
 export const A4BillHTML = (props) => {
   return ThermalBillHTML({ ...props, billSize: "4inch" });
 };

@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Customer;
-use App\Models\Supplier; // 👇 Supplier Model එක Import කළා
+use App\Models\Supplier; // Imported Supplier Model
 use App\Models\CustomersLoan;
 use App\Models\IncomeExpenses;
 use App\Models\Sale; 
@@ -27,7 +27,7 @@ class CustomersLoanController extends Controller
             return [
                 'id' => $loan->id, 
                 'customer_id' => $loan->customer_id,
-                'supplier_code' => $loan->supplier_code, // 👇 Added Supplier Code
+                'supplier_code' => $loan->supplier_code, // Added Supplier Code
                 'loan_type' => $loan->loan_type,
                 'description' => $loan->description,
                 'amount' => (float) $loan->amount, 
@@ -63,7 +63,7 @@ class CustomersLoanController extends Controller
             'loan_type' => 'required|string|in:old,today,ingoing,outgoing,grn_damage,returns,supplier_repayment,supplier_sale',
             'settling_way' => 'nullable|string|in:cash,cheque',
             'customer_id' => 'nullable|exists:customers,id',
-            'supplier_code' => 'nullable|string', // 👇 Validating Supplier Code
+            'supplier_code' => 'nullable|string', // Validating Supplier Code
             'amount' => 'nullable|numeric',
             'description' => 'nullable|string|max:255',
             'bill_no' => 'nullable|string|max:255',
@@ -83,11 +83,11 @@ class CustomersLoanController extends Controller
                 return response()->json(['error' => 'Supplier not found'], 404);
             }
 
-            // ගොවියන්ගේ ණය පියවීම (-) -> Reduct from advance_amount (Supplier owes less or gets negative balance)
+            // Supplier debt settlement (-) -> Deduct from advance_amount (Supplier owes less or gets negative balance)
             if ($loanType === 'supplier_repayment') {
                 $supplier->advance_amount -= abs($validated['amount']);
             } 
-            // ගොවියන්ගේ එළවළු විකුණුම (+) -> Add to advance_amount
+            // Supplier vegetable sale (+) -> Add to advance_amount
             elseif ($loanType === 'supplier_sale') {
                 $supplier->advance_amount += abs($validated['amount']);
             }
@@ -284,4 +284,106 @@ class CustomersLoanController extends Controller
     public function getAllBillNos() { /* ... */ }
     public function loanReportResults(Request $request) { /* ... */ }
     public function getLoanReportData(Request $request) { /* ... */ }
+
+    // --- NEW FUNCTION: Fetch Customer Loan Breakdown ---
+    public function getCustomerLoanBreakdown($id)
+    {
+        $customer = Customer::find($id);
+        if (!$customer) {
+            return response()->json(['error' => 'Customer not found'], 404);
+        }
+
+        // Filter only 'old' and 'today' loan types and order by date
+        $loans = IncomeExpenses::where('customer_id', $id)
+            ->whereIn('loan_type', ['old', 'today'])
+            ->orderBy('date', 'asc')
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        $breakdown = [];
+        $runningBalance = 0;
+
+        foreach ($loans as $loan) {
+            $increase = 0;
+            $decrease = 0;
+
+            if ($loan->loan_type === 'today') {
+                // Customer's today loan taken (+) -> Increase
+                $increase = abs($loan->amount); 
+                $runningBalance += $increase;
+            } elseif ($loan->loan_type === 'old') {
+                // Customer's old loan received (-) -> Decrease
+                $decrease = abs($loan->amount); 
+                $runningBalance -= $decrease;
+            }
+
+            $breakdown[] = [
+                'date' => $loan->date,
+                'description' => $loan->description,
+                'bill_no' => $loan->bill_no,
+                'decrease' => $decrease > 0 ? number_format($decrease, 2) : '',
+                'increase' => $increase > 0 ? number_format($increase, 2) : '',
+                'balance' => number_format($runningBalance, 2)
+            ];
+        }
+
+        return response()->json([
+            'customer_name' => $customer->name,
+            'customer_short_name' => $customer->short_name,
+            'report_date' => now()->format('n/j/Y g:i:s A'),
+            'data' => $breakdown,
+            'final_balance' => number_format($runningBalance, 2)
+        ]);
+    }
+    // --- FETCH SUPPLIER/FARMER LOAN BREAKDOWN ---
+    public function getSupplierLoanBreakdown($code)
+    {
+        $supplier = \App\Models\Supplier::where('code', $code)->first();
+        if (!$supplier) {
+            return response()->json(['error' => 'Supplier not found'], 404);
+        }
+
+        // Fetch supplier_repayment (-) and supplier_sale (+) from IncomeExpenses table
+        $loans = \App\Models\IncomeExpenses::where('supplier_code', $code)
+            ->whereIn('loan_type', ['supplier_repayment', 'supplier_sale'])
+            ->orderBy('Date', 'asc')
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        $breakdown = [];
+        $runningBalance = 0;
+
+        foreach ($loans as $loan) {
+            $increase = 0;
+            $decrease = 0;
+
+            if ($loan->loan_type === 'supplier_sale') {
+                $increase = abs($loan->amount); 
+                $runningBalance += $increase;
+            } elseif ($loan->loan_type === 'supplier_repayment') {
+                $decrease = abs($loan->amount); 
+                $runningBalance -= $decrease;
+            }
+
+            $displayDate = $loan->Date ?? $loan->date ?? \Carbon\Carbon::parse($loan->created_at)->format('Y-m-d');
+
+            $breakdown[] = [
+                'date' => $displayDate,
+                'description' => $loan->description,
+                'bill_no' => $loan->bill_no,
+                'decrease' => $decrease > 0 ? number_format($decrease, 2) : '',
+                'increase' => $increase > 0 ? number_format($increase, 2) : '',
+                'balance' => number_format($runningBalance, 2)
+            ];
+        }
+
+        return response()->json([
+            'is_supplier' => true, // Flag to identify supplier in frontend
+            'customer_name' => $supplier->name,
+            'customer_short_name' => $supplier->code,
+            'report_date' => now()->format('Y-m-d H:i:s A'),
+            'data' => $breakdown,
+            'final_balance' => number_format($runningBalance, 2)
+        ]);
+    }
 }

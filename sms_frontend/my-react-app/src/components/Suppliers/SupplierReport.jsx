@@ -54,11 +54,14 @@ const SupplierReport = () => {
   // Lorry Transactions Data
   const [lorryTransactions, setLorryTransactions] = useState([]);
 
-  // Lorry Transaction Form State (total_amount represents Quantity now)
+  // 👇 NEW: State to hold supplier specific loan transactions (Repayments & Sales)
+  const [supplierLoans, setSupplierLoans] = useState([]);
+
+  // Lorry Transaction Form State
   const [lorryFormData, setLorryFormData] = useState({
     lorry_name: "",
     customer_code: "",
-    total_amount: "", // This is now used as Quantity (ප්‍රමාණය)
+    total_amount: "", // Used as Quantity
     box_type: "",
     lorry_amount: "",
     nattami: "",
@@ -108,14 +111,13 @@ const SupplierReport = () => {
   const refreshIntervalRef = useRef(null);
   const isPrintingOrUpdatingRef = useRef(false);
 
-  // 🚀 PERFECTED FORMATTER: Forces Absolute Values (No minus signs!)
+  // FORMATTER
   const formatDecimal = (value, decimals = 2) =>
     Math.abs(parseFloat(value) || 0).toLocaleString("en-US", {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
 
-  // --- Fetch all Lorry Transactions ---
   const fetchLorryTransactions = async () => {
     try {
       const response = await api.get("/lorry-transactions");
@@ -125,7 +127,23 @@ const SupplierReport = () => {
     }
   };
 
-  // --- Function to fetch the summary data ---
+  // 👇 NEW: Function to fetch supplier specific loans for the print out
+  const fetchSupplierLoans = useCallback(async (supplierCode) => {
+    if (!supplierCode) return;
+    try {
+      const response = await api.get(`/customers-loans/data`);
+      const filteredLoans = (response.data.loans || []).filter(
+        (loan) =>
+          loan.supplier_code === supplierCode &&
+          (loan.loan_type === "supplier_repayment" ||
+            loan.loan_type === "supplier_sale"),
+      );
+      setSupplierLoans(filteredLoans);
+    } catch (error) {
+      console.error("Error fetching supplier loans:", error);
+    }
+  }, []);
+
   const fetchSummary = useCallback(async (isAutoRefresh = false) => {
     if (isPrintingOrUpdatingRef.current) return;
 
@@ -214,6 +232,7 @@ const SupplierReport = () => {
         await refreshBillDetails();
         await fetchSupplierProfile(selectedSupplier);
         await fetchLorryTransactions();
+        await fetchSupplierLoans(selectedSupplier); // Refresh loans too
       }
     }, 3000);
 
@@ -227,6 +246,7 @@ const SupplierReport = () => {
     fetchSummary,
     refreshBillDetails,
     fetchSupplierProfile,
+    fetchSupplierLoans,
     selectedSupplier,
   ]);
 
@@ -238,7 +258,6 @@ const SupplierReport = () => {
     navigate("/sales");
   };
 
-  // 🚀 MATH CALCULATIONS (STRIPPED MINUS SIGNS)
   const {
     totalWeight,
     totalPacksSum,
@@ -293,17 +312,8 @@ const SupplierReport = () => {
     };
   }, [supplierDetails]);
 
-  // 🚀 AUTO-FILL LORRY QUANTITY WHEN BILL LOADS
-  useEffect(() => {
-    if (isUnprintedBill && supplierDetails.length > 0) {
-      setLorryFormData((prev) => ({
-        ...prev,
-        total_amount: totalPacksSum.toString(), // Auto fill quantity
-      }));
-    }
-  }, [supplierDetails, isUnprintedBill, totalPacksSum]);
+  // 🚀 REMOVED auto-fill for quantity, now you can type freely!
 
-  // 🚀 BOX TYPE RATES
   const getBoxRate = (type) => {
     if (!type) return 0;
     const t = type.trim().toUpperCase();
@@ -313,7 +323,6 @@ const SupplierReport = () => {
     return 0;
   };
 
-  // 🚀 LORRY DEDUCTION CALCULATION
   const {
     lorryTotalLorryAmount,
     lorryTotalNattami,
@@ -333,9 +342,9 @@ const SupplierReport = () => {
     currentLorryTx.forEach((t) => {
       lAmount += Math.abs(parseFloat(t.lorry_amount) || 0);
       nAmount += Math.abs(parseFloat(t.nattami) || 0);
-      const q = Math.abs(parseFloat(t.total_amount) || 0); // total_amount IS quantity
+      const q = Math.abs(parseFloat(t.total_amount) || 0);
       qty += q;
-      bCost += q * getBoxRate(t.box_type); // Add Box/Bag rate * Quantity
+      bCost += q * getBoxRate(t.box_type);
     });
 
     return {
@@ -348,7 +357,6 @@ const SupplierReport = () => {
     };
   }, [lorryTransactions, selectedSupplier]);
 
-  // 🚀 FINAL NET PAYABLE CALCULATION (Exact Match)
   const paidAmountValue = Math.abs(parseFloat(payingAmount) || 0);
   const safeAdvanceAmount = Math.abs(parseFloat(advanceAmount) || 0);
 
@@ -359,40 +367,7 @@ const SupplierReport = () => {
 
   const handleLorryChange = (e) => {
     const { name, value } = e.target;
-
-    setLorryFormData((prev) => {
-      const updated = { ...prev, [name]: value };
-
-      // 🚀 AUTO-CALCULATE Total Amount when Box Type changes
-      if (name === "box_type") {
-        let rate = 0;
-        switch (value) {
-          case "BAG":
-          case "CARD":
-          case "TK":
-            rate = 40;
-            break;
-          case "LEEP":
-          case "TAKB":
-            rate = 30;
-            break;
-          case "TL":
-            rate = 50;
-            break;
-          default:
-            rate = 0;
-        }
-
-        if (rate > 0) {
-          // Multiply rate by the total amount of packs currently in the bill
-          updated.total_amount = (totalPacksSum * rate).toString();
-        } else {
-          updated.total_amount = "";
-        }
-      }
-
-      return updated;
-    });
+    setLorryFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleLorrySubmit = async (e) => {
@@ -424,7 +399,7 @@ const SupplierReport = () => {
       setLorryFormData({
         lorry_name: "",
         customer_code: selectedSupplier || "",
-        total_amount: totalPacksSum.toString(), // Keep quantity filled
+        total_amount: "", // Clears so you can type a new one
         box_type: "",
         lorry_amount: "",
         nattami: "",
@@ -552,7 +527,11 @@ const SupplierReport = () => {
     setPayingAmount("");
     setAdvancePayload({ code: supplierCode, advance_amount: "" });
 
-    setLorryFormData((prev) => ({ ...prev, customer_code: supplierCode }));
+    setLorryFormData((prev) => ({
+      ...prev,
+      customer_code: supplierCode,
+      total_amount: "",
+    }));
     setIsDetailsLoading(true);
 
     try {
@@ -581,6 +560,8 @@ const SupplierReport = () => {
       console.warn(`Profile not found for: ${supplierCode}`);
     }
 
+    await fetchSupplierLoans(supplierCode);
+
     setIsDetailsLoading(false);
     setTimeout(() => {
       isPrintingOrUpdatingRef.current = false;
@@ -601,7 +582,11 @@ const SupplierReport = () => {
     setPayingAmount("");
     setAdvancePayload({ code: supplierCode, advance_amount: "" });
 
-    setLorryFormData((prev) => ({ ...prev, customer_code: supplierCode }));
+    setLorryFormData((prev) => ({
+      ...prev,
+      customer_code: supplierCode,
+      total_amount: "",
+    }));
     setIsDetailsLoading(true);
 
     try {
@@ -631,6 +616,8 @@ const SupplierReport = () => {
     } catch (error) {
       console.warn(`Profile not found for: ${supplierCode}`);
     }
+
+    await fetchSupplierLoans(supplierCode);
 
     setIsDetailsLoading(false);
     setTimeout(() => {
@@ -676,7 +663,7 @@ const SupplierReport = () => {
       try {
         await api.post("/supplier-loan", {
           code: selectedSupplier,
-          loan_amount: paidAmountValue, // Guaranteed positive
+          loan_amount: paidAmountValue,
           total_amount: finalNetPayable,
           bill_no: selectedBillNo || null,
         });
@@ -704,7 +691,7 @@ const SupplierReport = () => {
       ? { backgroundColor: "#f8f9fa" }
       : { backgroundColor: "#ffffff" };
 
-  // 🚀 PRINT TEMPLATES BASED ON OLD SYSTEM SCREENSHOT
+  // 🚀 PRINT TEMPLATES
   const getA4Content = useCallback(
     (currentBillNo, billWidth = "101mm", topMargin = "13mm") => {
       const date = new Date().toLocaleDateString("si-LK");
@@ -736,6 +723,28 @@ const SupplierReport = () => {
             </tr>`;
         })
         .join("");
+
+      // 🚀 Generate HTML for Supplier Loans to add above "ඉදිරියට ගෙනා ඉතිරිය"
+      let supplierLoansHtml = "";
+      if (supplierLoans && supplierLoans.length > 0) {
+        supplierLoans.forEach((loan) => {
+          if (loan.loan_type === "supplier_repayment") {
+            supplierLoansHtml += `
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0; color: #555;">
+                        <span>ගොවියන්ගේ ණය පියවීම (-) [${loan.description || ""}]</span>
+                        <span style="text-align: right;">-${formatDecimal(loan.amount)}</span>
+                    </div>
+                  `;
+          } else if (loan.loan_type === "supplier_sale") {
+            supplierLoansHtml += `
+                    <div style="display: flex; justify-content: space-between; padding: 2px 0; color: #555;">
+                        <span>ගොවියන්ගේ එළවළු විකුණුම (+) [${loan.description || ""}]</span>
+                        <span style="text-align: right;">+${formatDecimal(loan.amount)}</span>
+                    </div>
+                  `;
+          }
+        });
+      }
 
       return `
         <div style="width: 100mm; margin: 0 auto; border: 1px solid #000; padding: 10px; font-family: Arial, sans-serif; background: white; color: black;">
@@ -815,6 +824,9 @@ const SupplierReport = () => {
                     <span style="text-align: right; font-size: 16px;">${formatDecimal(thisBillPayable - totalLorryDeduction)}</span>
                 </div>
 
+                <!-- 🚀 New Supplier Loans added here -->
+                ${supplierLoansHtml}
+
                 <div style="display: flex; justify-content: space-between; padding: 5px 0;">
                     <span>ඉදිරියට ගෙනා ඉතිරිය :</span>
                     <span style="text-align: right;">${formatDecimal(safeAdvanceAmount)}</span>
@@ -860,6 +872,7 @@ const SupplierReport = () => {
       payingAmount,
       finalNetPayable,
       thisBillPayable,
+      supplierLoans,
     ],
   );
 
@@ -874,7 +887,6 @@ const SupplierReport = () => {
   const handlePrint = useCallback(async () => {
     if (!supplierDetails || supplierDetails.length === 0) return;
 
-    // 🚀 NEW CONDITION: Must have Lorry Transaction for unprinted bill
     if (isUnprintedBill && !hasLorryTransaction) {
       toast.error("කරුණාකර පළමුව ලොරි දත්ත (Lorry Transaction) ඇතුළත් කරන්න!");
       return;
@@ -1040,7 +1052,6 @@ const SupplierReport = () => {
       ) {
         event.preventDefault();
 
-        // 🚀 NEW CONDITION: Must have Lorry Transaction for unprinted bill (F4 Key)
         if (isUnprintedBill && !hasLorryTransaction) {
           toast.error(
             "කරුණාකර පළමුව ලොරි දත්ත (Lorry Transaction) ඇතුළත් කරන්න!",
@@ -1067,7 +1078,7 @@ const SupplierReport = () => {
       path
         ? path.startsWith("http")
           ? path
-          : `https://goviraju.lk/DBS_backend_30500/application/public/storage/${path}`
+          : `https://goviraju.lk/vts_sales_backend/application/public/storage/${path}`
         : null;
     const onClose = () => setIsImageModalOpen(false);
 
@@ -1655,14 +1666,15 @@ const SupplierReport = () => {
             <td style={tdStyle}>
               <strong>{record.item_name}</strong>
             </td>
-            {/* ✅ ALWAYS SHOW POSITIVE NUMBERS IN UI */}
             <td style={tdStyle}>{Math.abs(record.packs || 0)}</td>
             <td style={tdStyle}>{Math.abs(record.weight || 0)}</td>
             <td style={tdStyle}>{formatDecimal(record.price_per_kg)}</td>
             <td style={tdStyle}>{formatDecimal(record.SupplierPricePerKg)}</td>
             <td style={tdStyle}>
               {formatDecimal(
-                (record?.total || 0) - (record?.CustomerPackLabour || 0),
+                Math.abs(
+                  (record?.total || 0) - (record?.CustomerPackLabour || 0),
+                ),
               )}
             </td>
             <td style={tdStyle}>{formatDecimal(record.SupplierTotal)}</td>
@@ -1735,7 +1747,7 @@ const SupplierReport = () => {
                 src={
                   profilePic.startsWith("http")
                     ? profilePic
-                    : `https://goviraju.lk/DBS_backend_30500/application/public/storage/${profilePic}`
+                    : `https://goviraju.lk/vts_sales_backend/application/public/storage/${profilePic}`
                 }
                 alt="Supplier"
                 onClick={() => setIsImageModalOpen(true)}
@@ -1802,7 +1814,6 @@ const SupplierReport = () => {
             )}
           </table>
 
-          {/* 🚀 EXACT BLUE SUMMARY BAR MATCHING THE OLD SYSTEM */}
           {selectedSupplier && supplierDetails.length > 0 && (
             <div
               style={{
@@ -1884,7 +1895,7 @@ const SupplierReport = () => {
                     }}
                   >
                     {finalNetPayable < 0
-                      ? `-${formatDecimal(finalNetPayable)}` // Correct logic from screenshots
+                      ? `-${formatDecimal(finalNetPayable)}`
                       : formatDecimal(finalNetPayable)}
                   </span>
                 </div>
@@ -1930,7 +1941,6 @@ const SupplierReport = () => {
               </tbody>
             </table>
 
-            {/* 🚀 LORRY TRANSACTION FORM & SUMMARY EMBEDDED HERE (Only for unprinted bills) */}
             {isUnprintedBill && (
               <div
                 style={{

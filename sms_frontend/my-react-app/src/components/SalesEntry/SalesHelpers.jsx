@@ -35,10 +35,10 @@ export const BreakdownDisplay = ({ sale, formatDecimal }) => {
               <tr key={i} className="border-b border-gray-50 last:border-0">
                 <td className="py-1 text-black">{entry.time}</td>
                 <td className="py-1 text-right font-bold text-black">
-                  {formatDecimal(entry.weight)} kg
+                  {formatDecimal(Math.abs(parseFloat(entry.weight) || 0))} kg
                 </td>
                 <td className="py-1 text-right font-bold text-black">
-                  {entry.packs}
+                  {Math.abs(parseInt(entry.packs) || 0)}
                 </td>
               </tr>
             ))}
@@ -46,7 +46,8 @@ export const BreakdownDisplay = ({ sale, formatDecimal }) => {
         </table>
       </div>
       <div className="mt-2 pt-1 border-t-2 border-blue-200 text-right font-black text-lg text-black">
-        Total: {formatDecimal(sale.weight)}kg / {sale.packs}p
+        Total: {formatDecimal(Math.abs(parseFloat(sale.weight) || 0))}kg /{" "}
+        {Math.abs(parseInt(sale.packs) || 0)}p
       </div>
     </div>
   );
@@ -69,8 +70,8 @@ export const ItemSummary = ({ sales, formatDecimal }) => {
       const itemName = sale.item_name || "Unknown";
       if (!result[itemName])
         result[itemName] = { totalWeight: 0, totalPacks: 0 };
-      result[itemName].totalWeight += parseFloat(sale.weight) || 0;
-      result[itemName].totalPacks += parseInt(sale.packs) || 0;
+      result[itemName].totalWeight += Math.abs(parseFloat(sale.weight) || 0);
+      result[itemName].totalPacks += Math.abs(parseInt(sale.packs) || 0);
     });
     return result;
   }, [sales]);
@@ -140,11 +141,11 @@ export const SalesSummaryFooter = ({ sales, formatDecimal }) => {
   const totals = useMemo(() => {
     return sales.reduce(
       (acc, s) => {
-        const weight = parseFloat(s.weight) || 0;
-        const price = parseFloat(s.price_per_kg) || 0;
-        const packs = parseFloat(s.packs) || 0;
-        const packCost = parseFloat(s.CustomerPackCost) || 0;
-        const packLabour = parseFloat(s.CustomerPackLabour) || 0;
+        const weight = Math.abs(parseFloat(s.weight) || 0);
+        const price = Math.abs(parseFloat(s.price_per_kg) || 0);
+        const packs = Math.abs(parseFloat(s.packs) || 0);
+        const packCost = Math.abs(parseFloat(s.CustomerPackCost) || 0);
+        const packLabour = Math.abs(parseFloat(s.CustomerPackLabour) || 0);
         acc.billTotal += weight * price;
         acc.totalBagPrice += packs * packCost;
         acc.totalLabour += packs * packLabour;

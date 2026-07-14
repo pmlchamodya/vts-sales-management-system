@@ -51,27 +51,27 @@ const initialFormData = {
 };
 
 const fieldOrder = [
-  "telephone_no",
   "customer_code_input",
   "customer_code_select",
   "supplier_code",
   "item_code_select",
   "kuliya",
   "nattami",
+  "telephone_no",
   "weight",
   "price_per_kg_grid_item",
   "packs",
 ];
 
 const skipMap = {
-  telephone_no: "customer_code_input",
   customer_code_input: "supplier_code",
   customer_code_select: "supplier_code",
   given_amount: "supplier_code",
   supplier_code: "item_code_select",
   item_code_select: "weight",
   kuliya: "nattami",
-  nattami: "weight",
+  nattami: "telephone_no",
+  telephone_no: "weight",
   weight: "price_per_kg_grid_item",
   price_per_kg: "packs",
   price_per_kg_grid_item: "packs",
@@ -84,6 +84,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
   const [allSalesRecords, setAllSalesRecords] = useState([]);
   const [isLoadingAllSales, setIsLoadingAllSales] = useState(false);
+
+  const [highlightItemDropdown, setHighlightItemDropdown] = useState(false);
 
   const fetchAllSalesRecords = async () => {
     try {
@@ -506,58 +508,63 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     [unprintedSales, searchQueries.unprinted],
   );
 
- const displayedSales = useMemo(() => {
-  let sales = [];
+  const displayedSales = useMemo(() => {
+    let sales = [];
 
-  if (selectedPrintedCustomer) {
-    if (selectedPrintedCustomer.includes("-")) {
-      const [cCode, bNo] = selectedPrintedCustomer.split("-");
-      sales = printedSales.filter(
+    if (selectedPrintedCustomer) {
+      if (selectedPrintedCustomer.includes("-")) {
+        const [cCode, bNo] = selectedPrintedCustomer.split("-");
+        sales = printedSales.filter(
+          (s) =>
+            (s.customer_code || "").trim().toUpperCase() ===
+              cCode.trim().toUpperCase() && String(s.bill_no) === String(bNo),
+        );
+      } else {
+        sales = printedSales.filter(
+          (s) =>
+            (s.customer_code || "").trim().toUpperCase() ===
+            selectedPrintedCustomer.trim().toUpperCase(),
+        );
+      }
+    } else if (selectedUnprintedCustomer) {
+      const safeSelectedUnprinted = selectedUnprintedCustomer
+        .trim()
+        .toUpperCase();
+
+      const customerNewSales = newSales.filter(
         (s) =>
           (s.customer_code || "").trim().toUpperCase() ===
-          cCode.trim().toUpperCase() && String(s.bill_no) === String(bNo),
+          safeSelectedUnprinted,
       );
+      const customerUnprintedSales = unprintedSales.filter(
+        (s) =>
+          (s.customer_code || "").trim().toUpperCase() ===
+          safeSelectedUnprinted,
+      );
+
+      sales = [...customerNewSales, ...customerUnprintedSales];
     } else {
-      sales = printedSales.filter(
-        (s) =>
-          (s.customer_code || "").trim().toUpperCase() ===
-          selectedPrintedCustomer.trim().toUpperCase(),
-      );
+      sales = newSales;
     }
-  } else if (selectedUnprintedCustomer) {
-    const safeSelectedUnprinted = selectedUnprintedCustomer.trim().toUpperCase();
 
-    // FIX: Include BOTH newSales AND unprintedSales for this customer
-    const customerNewSales = newSales.filter(
-      (s) => (s.customer_code || "").trim().toUpperCase() === safeSelectedUnprinted
-    );
-    const customerUnprintedSales = unprintedSales.filter(
-      (s) => (s.customer_code || "").trim().toUpperCase() === safeSelectedUnprinted
-    );
-    
-    sales = [...customerNewSales, ...customerUnprintedSales];
-  } else {
-    sales = newSales;
-  }
-
-  const uniqueSales = [];
-  const map = new Map();
-  for (const item of sales) {
-    if (!map.has(item.id)) {
-      map.set(item.id, true);
-      uniqueSales.push(item);
+    const uniqueSales = [];
+    const map = new Map();
+    for (const item of sales) {
+      if (!map.has(item.id)) {
+        map.set(item.id, true);
+        uniqueSales.push(item);
+      }
     }
-  }
 
-  return uniqueSales.slice().reverse();
-}, [
-  newSales,
-  unprintedSales,
-  printedSales,
-  selectedUnprintedCustomer,
-  selectedPrintedCustomer,
-  allSales, // Add allSales as dependency to ensure updates
-]);
+    return uniqueSales.slice().reverse();
+  }, [
+    newSales,
+    unprintedSales,
+    printedSales,
+    selectedUnprintedCustomer,
+    selectedPrintedCustomer,
+    allSales,
+  ]);
 
   const autoCustomerCode = useMemo(
     () =>
@@ -639,11 +646,11 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     if (displayedSales.length > 0) {
       const totals = displayedSales.reduce(
         (acc, s) => {
-          const weight = parseFloat(s.weight) || 0;
-          const price = parseFloat(s.price_per_kg) || 0;
-          const packs = parseFloat(s.packs) || 0;
-          const pCost = parseFloat(s.CustomerPackCost) || 0;
-          const pLabour = parseFloat(s.CustomerPackLabour) || 0;
+          const weight = Math.abs(parseFloat(s.weight) || 0);
+          const price = Math.abs(parseFloat(s.price_per_kg) || 0);
+          const packs = Math.abs(parseFloat(s.packs) || 0);
+          const pCost = Math.abs(parseFloat(s.CustomerPackCost) || 0);
+          const pLabour = Math.abs(parseFloat(s.CustomerPackLabour) || 0);
           acc.billTotal += weight * price;
           acc.totalBagPrice += packs * pCost;
           acc.totalLabour += packs * pLabour;
@@ -667,7 +674,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
       if (customer) {
         const baseUrl =
-          "https://goviraju.lk/DBS_backend_30500/application/public";
+          "https://goviraju.lk/vts_sales_backend/application/public";
         let fileName = customer.profile_pic;
         let fullPath = null;
 
@@ -705,7 +712,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
       if (supplier) {
         const baseUrl =
-          "https://goviraju.lk/DBS_backend_30500/application/public";
+          "https://goviraju.lk/vts_sales_backend/application/public";
         let fileName = supplier.profile_pic;
 
         let fullPath = null;
@@ -734,11 +741,11 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   }, [formData.supplier_code, suppliers]);
 
-  // 🟢 CALCULATE TOTAL
+  // CALCULATE TOTAL
   useEffect(() => {
     const w = parseFloat(formData.weight) || 0;
     const p = parseFloat(formData.price_per_kg) || 0;
-    const total = w * p;
+    const total = Math.abs(w * p);
     setFormData((prev) => ({ ...prev, total: Number(total.toFixed(2)) }));
   }, [formData.weight, formData.price_per_kg, formData.packs]);
 
@@ -765,7 +772,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         : null,
       selectedPrintedCustomer: null,
       customerSearchInput: "",
-      bulkPrice: "", // Reset bulk price when changing customer
+      bulkPrice: "",
     });
     const existingGivenAmount =
       allSales.find((s) => s.customer_code === short)?.given_amount || "";
@@ -880,6 +887,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         gridPricePerKg: priceToUse,
       });
 
+      // Clear highlight
+      setHighlightItemDropdown(false);
+
       setTimeout(() => refs.weight.current?.focus(), 100);
     } else {
       setFormData((prev) => ({
@@ -893,131 +903,130 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     }
   };
 
-const handleCustomerClick = async (
-  type,
-  customerCode,
-  billNo = null,
-  salesRecords = [],
-) => {
-  if (state.isPrinting) return;
+  const handleCustomerClick = async (
+    type,
+    customerCode,
+    billNo = null,
+    salesRecords = [],
+  ) => {
+    if (state.isPrinting) return;
 
-  if (currentUser?.role === "Admin") {
-    if (adminViewRef.current && adminViewRef.current.openCustomerBill) {
-      adminViewRef.current.openCustomerBill(
-        customerCode,
-        billNo,
-        salesRecords,
-      );
-    } else {
-      alert("Customer bill view is loading. Please try again.");
+    if (currentUser?.role === "Admin") {
+      if (adminViewRef.current && adminViewRef.current.openCustomerBill) {
+        adminViewRef.current.openCustomerBill(
+          customerCode,
+          billNo,
+          salesRecords,
+        );
+      } else {
+        alert("Customer bill view is loading. Please try again.");
+      }
+      return;
     }
-    return;
-  }
 
-  const isPrinted = type === "printed";
-  let selectionKey = customerCode;
-  if (isPrinted && billNo) selectionKey = `${customerCode}-${billNo}`;
-  
-  // Check if currently selected
-  const isCurrentlySelected = isPrinted
-    ? state.selectedPrintedCustomer === selectionKey
-    : state.selectedUnprintedCustomer === selectionKey;
+    const isPrinted = type === "printed";
+    let selectionKey = customerCode;
+    if (isPrinted && billNo) selectionKey = `${customerCode}-${billNo}`;
 
-  // If already selected, DESELECT (toggle off)
-  if (isCurrentlySelected) {
-    // Clear form
-    setFormData({
-      ...initialFormData,
-    });
-    
-    // Clear all selection states
+    // Check if currently selected
+    const isCurrentlySelected = isPrinted
+      ? state.selectedPrintedCustomer === selectionKey
+      : state.selectedUnprintedCustomer === selectionKey;
+
+    // If already selected, DESELECT (toggle off)
+    if (isCurrentlySelected) {
+      setFormData({
+        ...initialFormData,
+      });
+
+      updateState({
+        selectedPrintedCustomer: null,
+        selectedUnprintedCustomer: null,
+        currentBillNo: null,
+        editingSaleId: null,
+        isManualClear: false,
+        customerSearchInput: "",
+        priceManuallyChanged: false,
+        bulkPrice: "",
+        selectedSaleForBreakdown: null,
+        gridPricePerKg: "",
+        loanAmount: 0,
+      });
+
+      return;
+    }
+
+    // If not selected, SELECT it
     updateState({
-      selectedPrintedCustomer: null,
-      selectedUnprintedCustomer: null,
-      currentBillNo: null,
+      selectedPrintedCustomer: isPrinted ? selectionKey : null,
+      selectedUnprintedCustomer: !isPrinted ? selectionKey : null,
+      currentBillNo: isPrinted ? billNo : null,
       editingSaleId: null,
       isManualClear: false,
       customerSearchInput: "",
       priceManuallyChanged: false,
       bulkPrice: "",
       selectedSaleForBreakdown: null,
-      gridPricePerKg: "",
-      loanAmount: 0,
     });
-    
-    return; // Stop here - we've deselected
-  }
 
-  // If not selected, SELECT it
-  updateState({
-    selectedPrintedCustomer: isPrinted ? selectionKey : null,
-    selectedUnprintedCustomer: !isPrinted ? selectionKey : null,
-    currentBillNo: isPrinted ? billNo : null,
-    editingSaleId: null,
-    isManualClear: false,
-    customerSearchInput: "",
-    priceManuallyChanged: false,
-    bulkPrice: "",
-    selectedSaleForBreakdown: null,
-  });
+    const customer = customers.find(
+      (x) =>
+        String(x.short_name).toUpperCase() ===
+        String(customerCode).toUpperCase(),
+    );
 
-  const customer = customers.find(
-    (x) =>
-      String(x.short_name).toUpperCase() ===
-      String(customerCode).toUpperCase(),
-  );
+    // Calculate totals for the customer
+    const totals = salesRecords.reduce(
+      (acc, s) => {
+        const weight = Math.abs(parseFloat(s.weight) || 0);
+        const price = Math.abs(parseFloat(s.price_per_kg) || 0);
+        const packs = Math.abs(parseFloat(s.packs) || 0);
+        const pCost = Math.abs(parseFloat(s.CustomerPackCost) || 0);
 
-  // Calculate totals for the customer
-  const totals = salesRecords.reduce(
-    (acc, s) => {
-      const weight = parseFloat(s.weight) || 0;
-      const price = parseFloat(s.price_per_kg) || 0;
-      const packs = parseFloat(s.packs) || 0;
-      const pCost = parseFloat(s.CustomerPackCost) || 0;
+        acc.billTotal += weight * price;
+        acc.totalBagPrice += packs * pCost;
 
-      acc.billTotal += weight * price;
-      acc.totalBagPrice += packs * pCost;
+        return acc;
+      },
+      { billTotal: 0, totalBagPrice: 0 },
+    );
 
-      return acc;
-    },
-    { billTotal: 0, totalBagPrice: 0 },
-  );
+    const calculatedFinal = totals.billTotal + totals.totalBagPrice;
+    let fetchedGivenAmount = calculatedFinal.toFixed(2);
 
-  const calculatedFinal = totals.billTotal + totals.totalBagPrice;
-  let fetchedGivenAmount = calculatedFinal.toFixed(2);
-
-  if (isPrinted) {
-    try {
-      const response = await api.get(
-        `${routes.getCustomerGivenAmount}/${customerCode}`,
-      );
-      fetchedGivenAmount = response.data?.given_amount ?? fetchedGivenAmount;
-    } catch (error) {
+    if (isPrinted) {
+      try {
+        const response = await api.get(
+          `${routes.getCustomerGivenAmount}/${customerCode}`,
+        );
+        fetchedGivenAmount = response.data?.given_amount ?? fetchedGivenAmount;
+      } catch (error) {
+        fetchedGivenAmount =
+          salesRecords[0]?.given_amount || fetchedGivenAmount;
+      }
+    } else {
       fetchedGivenAmount =
-        salesRecords[0]?.given_amount || fetchedGivenAmount;
+        salesRecords[salesRecords.length - 1]?.given_amount ||
+        fetchedGivenAmount;
     }
-  } else {
-    fetchedGivenAmount =
-      salesRecords[salesRecords.length - 1]?.given_amount ||
-      fetchedGivenAmount;
-  }
 
-  setFormData({
-    ...initialFormData,
-    customer_code: customerCode,
-    customer_name: customer?.name || "",
-    telephone_no: customer?.telephone_no || "",
-    given_amount: fetchedGivenAmount,
-  });
+    setFormData({
+      ...initialFormData,
+      customer_code: customerCode,
+      customer_name: customer?.name || "",
+      telephone_no: customer?.telephone_no || "",
+      given_amount: fetchedGivenAmount,
+    });
 
-  updateState({ 
-    gridPricePerKg: "",
-  });
+    updateState({
+      gridPricePerKg: "",
+    });
 
-  fetchLoanAmount(customerCode);
-  
-  setTimeout(() => refs.supplier_code.current?.focus(), 50);
-};
+    fetchLoanAmount(customerCode);
+
+    setTimeout(() => refs.supplier_code.current?.focus(), 50);
+  };
+
   const handleImageClick = (entityType) => {
     const code =
       entityType === "customer"
@@ -1077,6 +1086,9 @@ const handleCustomerClick = async (
         selectedSaleForBreakdown: null,
       });
 
+      // Turn off highlight when deselected
+      setHighlightItemDropdown(false);
+
       setTimeout(() => {
         refs.supplier_code?.current?.focus();
         refs.supplier_code?.current?.select();
@@ -1102,22 +1114,25 @@ const handleCustomerClick = async (
       telephone_no: sale.telephone_no || prev.telephone_no || "",
       supplier_code: sale.supplier_code || "",
       item_code: sale.item_code || "",
-      weight: sale.weight || "",
-      price_per_kg: sale.price_per_kg || "",
+      weight: Math.abs(parseFloat(sale.weight)) || "",
+      price_per_kg: Math.abs(parseFloat(sale.price_per_kg)) || "",
       pack_due: fetchedPackDue,
-      total: sale.total || "",
-      packs: sale.packs || "",
-      kuliya: sale.Kuliya || "",
-      nattami: sale.Nattami || "",
+      total: Math.abs(parseFloat(sale.total)) || "",
+      packs: Math.abs(parseInt(sale.packs)) || "",
+      kuliya: Math.abs(parseFloat(sale.Kuliya)) || "",
+      nattami: Math.abs(parseFloat(sale.Nattami)) || "",
     }));
     updateState({
       editingSaleId: sale.id,
       isManualClear: false,
       priceManuallyChanged: false,
-      gridPricePerKg: sale.price_per_kg || "",
+      gridPricePerKg: Math.abs(parseFloat(sale.price_per_kg)) || "",
       bulkPrice: "", // Clear bulk price when editing specific item
       selectedSaleForBreakdown: sale,
     });
+
+    // Turn ON highlight because user clicked edit
+    setHighlightItemDropdown(true);
 
     setTimeout(() => {
       if (refs.weight.current) {
@@ -1161,6 +1176,7 @@ const handleCustomerClick = async (
       selectedSaleForBreakdown: null,
       ...(clearBillNo && { currentBillNo: null }),
     });
+    setHighlightItemDropdown(false); // Reset highlight
   };
 
   const handleDeleteRecord = async (saleId) => {
@@ -1199,11 +1215,11 @@ const handleCustomerClick = async (
 
       const totals = salesToUpdate.reduce(
         (acc, s) => {
-          const weight = parseFloat(s.weight) || 0;
-          const price = parseFloat(s.price_per_kg) || 0;
-          const packs = parseFloat(s.packs) || 0;
-          const pCost = parseFloat(s.CustomerPackCost) || 0;
-          const pLabour = parseFloat(s.CustomerPackLabour) || 0;
+          const weight = Math.abs(parseFloat(s.weight) || 0);
+          const price = Math.abs(parseFloat(s.price_per_kg) || 0);
+          const packs = Math.abs(parseFloat(s.packs) || 0);
+          const pCost = Math.abs(parseFloat(s.CustomerPackCost) || 0);
+          const pLabour = Math.abs(parseFloat(s.CustomerPackLabour) || 0);
           acc.billTotal += weight * price;
           acc.totalBagPrice += packs * pCost;
           acc.totalLabour += packs * pLabour;
@@ -1407,139 +1423,152 @@ const handleCustomerClick = async (
     }
   };
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
-  if (state.isSubmitting) return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (state.isSubmitting) return;
 
-  const requiredFields = [
-    {
-      key: "customer_code",
-      ref: "customer_code_input",
-      label: "Customer Code",
-    },
-    { key: "supplier_code", ref: "supplier_code", label: "Supplier Code" },
-    { key: "item_code", ref: "item_code_select", label: "Item" },
-    { key: "weight", ref: "weight", label: "Weight" },
-    { key: "packs", ref: "packs", label: "Packs" },
-  ];
-
-  for (const field of requiredFields) {
-    const value = formData[field.key];
-    if (
-      value === null ||
-      value === undefined ||
-      value.toString().trim() === ""
-    ) {
-      updateState({
-        errors: { form: `කරුණාකර ${field.label} ඇතුළත් කරන්න` },
-      });
-      const targetRef = refs[field.ref];
-      if (targetRef?.current) {
-        targetRef.current.focus();
-        if (!field.ref.includes("select")) targetRef.current.select();
-      }
-      return;
-    }
-  }
-
-  updateState({ errors: {}, isSubmitting: true });
-
-  const customerCode = (
-    formData.customer_code || autoCustomerCode
-  ).toUpperCase();
-  const currentSupplierCode = formData.supplier_code;
-  const currentCustomerName = formData.customer_name;
-  const currentTelephone = formData.telephone_no;
-  const shouldUpdateRelatedPrice = state.priceManuallyChanged;
-
-  try {
-    const isEditing = editingSaleId !== null;
-
-    let billPrintedStatus = undefined,
-      billNoToUse = null;
-    if (!isEditing) {
-      if (state.currentBillNo) {
-        billPrintedStatus = "Y";
-        billNoToUse = state.currentBillNo;
-      } else if (selectedPrintedCustomer) {
-        billPrintedStatus = "Y";
-        billNoToUse = selectedPrintedCustomer.includes("-")
-          ? selectedPrintedCustomer.split("-")[1]
-          : printedSales.find(
-            (s) => s.customer_code === selectedPrintedCustomer,
-          )?.bill_no;
-      } else if (selectedUnprintedCustomer) {
-        billPrintedStatus = "N";
-      }
-    }
-
-    const activePrice = parseFloat(formData.price_per_kg) || 0;
-
-    const payload = {
-      supplier_code: currentSupplierCode.toUpperCase(),
-      customer_code: customerCode,
-      customer_name: currentCustomerName,
-      item_code: formData.item_code,
-      item_name: formData.item_name,
-      weight: parseFloat(formData.weight) || 0,
-      price_per_kg: activePrice,
-      pack_due: parseFloat(formData.pack_due) || 0,
-      total: parseFloat(formData.total) || 0,
-      packs: parseFloat(formData.packs) || 0,
-      given_amount: formData.given_amount
-        ? parseFloat(formData.given_amount)
-        : null,
-      kuliya: formData.kuliya ? parseFloat(formData.kuliya) : null,
-      nattami: formData.nattami ? parseFloat(formData.nattami) : null,
-      ...(billPrintedStatus && { bill_printed: billPrintedStatus }),
-      ...(billNoToUse && { bill_no: billNoToUse }),
-      update_related_price: shouldUpdateRelatedPrice,
-    };
-
-    const url = isEditing ? `${routes.sales}/${editingSaleId}` : routes.sales;
-    const method = isEditing ? "put" : "post";
-
-    await api[method](url, payload);
-
-    setFormData({
-      ...initialFormData,
-      customer_code: customerCode,
-      customer_name: currentCustomerName,
-      telephone_no: currentTelephone,
-      supplier_code: currentSupplierCode,
-    });
-
-    // FIX: Removed automatic selection of customer after submission
-    // The sale will appear in the main table under "newSales"
-    // User must manually click the customer in sidebar to view their unprinted sales
-    updateState({
-      editingSaleId: null,
-      isManualClear: false,
-      isSubmitting: false,
-      priceManuallyChanged: false,
-      gridPricePerKg: "",
-      // REMOVED: ...(!isEditing && !billPrintedStatus && { selectedUnprintedCustomer: customerCode, selectedPrintedCustomer: null }),
-    });
-
-    await fetchActiveSales();
-    await fetchAllSalesRecords();
-
-    if (refs.supplier_code.current) {
-      refs.supplier_code.current.focus();
-      refs.supplier_code.current.select();
-    }
-  } catch (error) {
-    updateState({
-      errors: {
-        form:
-          error.response?.data?.message ||
-          error.message ||
-          "An error occurred",
+    const requiredFields = [
+      {
+        key: "customer_code",
+        ref: "customer_code_input",
+        label: "Customer Code",
       },
-      isSubmitting: false,
-    });
-  }
-};
+      { key: "supplier_code", ref: "supplier_code", label: "Supplier Code" },
+      { key: "item_code", ref: "item_code_select", label: "Item" },
+      { key: "weight", ref: "weight", label: "Weight" },
+      { key: "packs", ref: "packs", label: "Packs" },
+    ];
+
+    for (const field of requiredFields) {
+      const value = formData[field.key];
+      if (
+        value === null ||
+        value === undefined ||
+        value.toString().trim() === ""
+      ) {
+        updateState({
+          errors: { form: `කරුණාකර ${field.label} ඇතුළත් කරන්න` },
+        });
+        const targetRef = refs[field.ref];
+        if (targetRef?.current) {
+          targetRef.current.focus();
+          if (!field.ref.includes("select")) targetRef.current.select();
+        }
+        return;
+      }
+    }
+
+    updateState({ errors: {}, isSubmitting: true });
+
+    const customerCode = (
+      formData.customer_code || autoCustomerCode
+    ).toUpperCase();
+    const currentSupplierCode = formData.supplier_code;
+    const currentCustomerName = formData.customer_name;
+    const currentTelephone = formData.telephone_no;
+    const shouldUpdateRelatedPrice = state.priceManuallyChanged;
+
+    try {
+      const isEditing = editingSaleId !== null;
+
+      let billPrintedStatus = undefined,
+        billNoToUse = null;
+      if (!isEditing) {
+        if (state.currentBillNo) {
+          billPrintedStatus = "Y";
+          billNoToUse = state.currentBillNo;
+        } else if (selectedPrintedCustomer) {
+          billPrintedStatus = "Y";
+          billNoToUse = selectedPrintedCustomer.includes("-")
+            ? selectedPrintedCustomer.split("-")[1]
+            : printedSales.find(
+                (s) => s.customer_code === selectedPrintedCustomer,
+              )?.bill_no;
+        } else if (selectedUnprintedCustomer) {
+          billPrintedStatus = "N";
+        }
+      }
+
+      const activePrice = parseFloat(formData.price_per_kg) || 0;
+
+      const finalWeight = parseFloat(formData.weight) || 0;
+      const finalPacks = parseFloat(formData.packs) || 0;
+
+      if (finalWeight < 0 || finalPacks < 0 || activePrice < 0) {
+        updateState({
+          errors: {
+            form: "බර, මිල හෝ අසුරුම් සඳහා සෘණ (-) අගයන් ඇතුළත් කළ නොහැක!",
+          },
+          isSubmitting: false,
+        });
+        return;
+      }
+
+      const payload = {
+        supplier_code: currentSupplierCode.toUpperCase(),
+        customer_code: customerCode,
+        customer_name: currentCustomerName,
+        item_code: formData.item_code,
+        item_name: formData.item_name,
+        weight: Math.abs(finalWeight),
+        price_per_kg: Math.abs(activePrice),
+        pack_due: parseFloat(formData.pack_due) || 0,
+        total: parseFloat(formData.total) || 0,
+        packs: Math.abs(finalPacks),
+        given_amount: formData.given_amount
+          ? parseFloat(formData.given_amount)
+          : null,
+        // ✅ මේ වෙනස මගින් හිස්ව තිබුනොත් ඔටෝ 50ක් එකතු වීම නතර වේ
+        kuliya: formData.kuliya ? parseFloat(formData.kuliya) : 0,
+        nattami: formData.nattami ? parseFloat(formData.nattami) : 0,
+        ...(billPrintedStatus && { bill_printed: billPrintedStatus }),
+        ...(billNoToUse && { bill_no: billNoToUse }),
+        update_related_price: shouldUpdateRelatedPrice,
+      };
+
+      const url = isEditing ? `${routes.sales}/${editingSaleId}` : routes.sales;
+      const method = isEditing ? "put" : "post";
+
+      await api[method](url, payload);
+
+      setFormData({
+        ...initialFormData,
+        customer_code: customerCode,
+        customer_name: currentCustomerName,
+        telephone_no: currentTelephone,
+        supplier_code: currentSupplierCode,
+      });
+
+      updateState({
+        editingSaleId: null,
+        isManualClear: false,
+        isSubmitting: false,
+        priceManuallyChanged: false,
+        gridPricePerKg: "",
+      });
+
+      setHighlightItemDropdown(false);
+
+      await fetchActiveSales();
+      await fetchAllSalesRecords();
+
+      if (refs.supplier_code.current) {
+        refs.supplier_code.current.focus();
+        refs.supplier_code.current.select();
+      }
+    } catch (error) {
+      updateState({
+        errors: {
+          form:
+            error.response?.data?.message ||
+            error.message ||
+            "An error occurred",
+        },
+        isSubmitting: false,
+      });
+    }
+  };
+
   const handleKeyDown = async (e, currentFieldName) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -1564,9 +1593,9 @@ const handleCustomerClick = async (
 
       if (currentFieldName === "nattami") {
         setTimeout(() => {
-          if (refs.weight.current) {
-            refs.weight.current.focus();
-            refs.weight.current.select();
+          if (refs.telephone_no.current) {
+            refs.telephone_no.current.focus();
+            refs.telephone_no.current.select();
           }
         }, 50);
         return;
@@ -1574,12 +1603,12 @@ const handleCustomerClick = async (
 
       if (currentFieldName === "telephone_no") {
         updateState({ showSavePhoneButton: false });
-        refs.customer_code_input.current?.focus();
+        refs.weight.current?.focus();
         return;
       }
 
       if (currentFieldName === "customer_code_input") {
-        const code = (formData.customer_code || autoCustomerCode)
+        const code = String(formData.customer_code || autoCustomerCode || "")
           .trim()
           .toUpperCase();
 
@@ -1620,11 +1649,11 @@ const handleCustomerClick = async (
       }
 
       if (currentFieldName === "weight") {
-        const customerCode = (
-          formData.customer_code || autoCustomerCode
+        const customerCode = String(
+          formData.customer_code || autoCustomerCode || "",
         ).trim();
-        const supplierCode = formData.supplier_code?.trim();
-        const itemCode = formData.item_code?.trim();
+        const supplierCode = String(formData.supplier_code || "").trim();
+        const itemCode = String(formData.item_code || "").trim();
         const areRequiredFieldsEmpty =
           !customerCode || !supplierCode || !itemCode;
 
@@ -1777,12 +1806,16 @@ const handleCustomerClick = async (
 
   const salesTotal = displayedSales.reduce(
     (sum, s) =>
-      sum + (parseFloat(s.weight) || 0) * (parseFloat(s.price_per_kg) || 0),
+      sum +
+      Math.abs(parseFloat(s.weight) || 0) *
+        Math.abs(parseFloat(s.price_per_kg) || 0),
     0,
   );
   const packCostTotal = displayedSales.reduce(
     (sum, s) =>
-      sum + (parseFloat(s.CustomerPackCost) || 0) * (parseFloat(s.packs) || 0),
+      sum +
+      Math.abs(parseFloat(s.CustomerPackCost) || 0) *
+        Math.abs(parseFloat(s.packs) || 0),
     0,
   );
   const totalSalesValue = salesTotal + packCostTotal;
@@ -1809,7 +1842,7 @@ const handleCustomerClick = async (
         </div>
       )}
 
-      {/* ✨ CSS GRID WRAPPER FOR PERFECT FULL SCREEN FILL ✨ */}
+      {/* ✨ CSS GRID WRAPPER ✨ */}
       <div
         className="three-column-layout w-full"
         style={{
@@ -1819,7 +1852,8 @@ const handleCustomerClick = async (
           width: "100%",
           gap: "10px",
           padding: "10px",
-          height: "calc(100vh - 165px)",
+          minHeight: "100vh",
+          alignItems: "start",
           boxSizing: "border-box",
         }}
       >
@@ -1829,9 +1863,10 @@ const handleCustomerClick = async (
           style={{
             backgroundColor: "#1ec139ff",
             borderRadius: "0.75rem",
-            height: "100%",
+            position: "sticky",
+            top: "10px",
+            height: "calc(100vh - 20px)",
             overflow: "hidden",
-            marginTop: "-30px"
           }}
         >
           {hasData ? (
@@ -1858,7 +1893,10 @@ const handleCustomerClick = async (
           ) : (
             <div
               className="w-full shadow-xl rounded-xl overflow-y-auto border border-black p-4 text-center"
-              style={{ backgroundColor: "#1ec139ff", height: "100%", marginTop: "-15px" }}
+              style={{
+                backgroundColor: "#1ec139ff",
+                height: "100%",
+              }}
             >
               <div
                 style={{ backgroundColor: "#006400" }}
@@ -1880,20 +1918,17 @@ const handleCustomerClick = async (
 
         {/* CENTER SECTION */}
         <div
-          className="center-form flex flex-col shadow-xl"
+          className="center-form shadow-xl"
           style={{
             backgroundColor: "#111439ff",
-            padding: "15px 20px",
+            padding: "15px 20px 15px 20px",
             borderRadius: "0.75rem",
             color: "white",
-            minHeight: "100vh", // Full viewport height minimum
+            height: "auto",
             boxSizing: "border-box",
             gridColumnStart: 2,
             gridColumnEnd: 3,
             width: "100%",
-            alignSelf: "flex-start",
-            marginTop: "-35px",
-            height: "auto", // Allow height to grow with content
           }}
         >
           {currentUser?.role === "Admin" ? (
@@ -1905,298 +1940,297 @@ const handleCustomerClick = async (
               suppliers={suppliers}
             />
           ) : (
-            <div className="pos-sales-view flex flex-col h-full w-full">
-              <div className="flex-shrink-0">
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="w-full flex justify-between items-center">
+            <div className="pos-sales-view w-full">
+              {/* Form Section */}
+              <div className="w-full relative">
+                <form onSubmit={handleSubmit} className="w-full relative">
+                  {/* Absolute Profile Images */}
+                  {state.customerProfilePic && (
+                    <div
+                      onClick={() => handleImageClick("customer")}
+                      className="cursor-pointer hover:scale-105 transition-transform"
+                      style={{
+                        position: "absolute",
+                        right: "120px",
+                        top: "-5px",
+                        display: "flex",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: "8px",
+                        zIndex: 50,
+                      }}
+                    >
+                      <span className="text-sm font-bold text-gray-400">
+                        ගැ
+                      </span>
+                      <div
+                        style={{
+                          width: "90px",
+                          height: "90px",
+                          backgroundColor: "white",
+                          border: "3px solid #1ec139",
+                          borderRadius: "10px",
+                          overflow: "hidden",
+                          boxShadow: "0 5px 15px rgba(0,0,0,0.5)",
+                          display: "flex",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        <img
+                          src={state.customerProfilePic}
+                          alt="Customer"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {state.supplierProfilePic && (
+                    <div
+                      onClick={() => handleImageClick("supplier")}
+                      className="cursor-pointer hover:scale-105 transition-transform"
+                      style={{
+                        position: "absolute",
+                        right: "0px",
+                        top: "-5px",
+                        display: "flex",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: "8px",
+                        zIndex: 50,
+                      }}
+                    >
+                      <span className="text-sm font-bold text-gray-400">
+                        සැ
+                      </span>
+                      <div
+                        style={{
+                          width: "90px",
+                          height: "90px",
+                          backgroundColor: "white",
+                          border: "3px solid #3b82f6",
+                          borderRadius: "10px",
+                          overflow: "hidden",
+                          boxShadow: "0 5px 15px rgba(0,0,0,0.5)",
+                          display: "flex",
+                          justifyContent: "center",
+                          alignItems: "center",
+                        }}
+                      >
+                        <img
+                          src={state.supplierProfilePic}
+                          alt="Supplier Profile"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <ImagePreviewModal
+                    isOpen={state.isImageModalOpen}
+                    onClose={() => updateState({ isImageModalOpen: false })}
+                    data={state.selectedImageData}
+                  />
+
+                  {/* ✨ Header Row - Telephone Number & Total Fixed ✨ */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "15px",
+                      marginBottom: "15px",
+                      zIndex: 20,
+                      flexWrap: "nowrap",
+                    }}
+                  >
                     <div
                       style={{
-                        position: "relative",
-                        top: "-20px",
                         display: "flex",
+                        gap: "25px",
                         alignItems: "center",
-                        zIndex: 20,
                       }}
                     >
                       <div
                         className="font-bold text-2xl"
-                        style={{ color: "red" }}
+                        style={{ color: "red", whiteSpace: "nowrap" }}
                       >
                         බිල් අං: {currentBillNo}
+                      </div>
+                      <div
+                        className="font-bold text-2xl whitespace-nowrap"
+                        style={{ color: "red" }}
+                      >
+                        මුළු විකුණුම්: Rs. {formatDecimal(totalSalesValue)}
                       </div>
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "15px",
-                          marginLeft: "100px",
+                          gap: "8px",
+                          whiteSpace: "nowrap",
                         }}
                       >
-                        <div
-                          className="font-bold text-2xl whitespace-nowrap"
-                          style={{ color: "red" }}
-                        >
-                          මුළු විකුණුම්: Rs. {formatDecimal(totalSalesValue)}
-                        </div>
-                        <div
+                        <input
+                          type="checkbox"
+                          id="bulkPrintCheckbox"
+                          checked={state.isBulkPrintEnabled}
+                          onChange={(e) =>
+                            updateState({
+                              isBulkPrintEnabled: e.target.checked,
+                            })
+                          }
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            marginTop: "10px",
+                            width: "22px",
+                            height: "22px",
+                            cursor: "pointer",
+                            accentColor: "#4CAF50",
+                          }}
+                        />
+                        <label
+                          htmlFor="bulkPrintCheckbox"
+                          style={{
+                            color: "white",
+                            fontSize: "1.1rem",
+                            fontWeight: "bold",
+                            cursor: "pointer",
                           }}
                         >
-                          <input
-                            type="checkbox"
-                            id="bulkPrintCheckbox"
-                            checked={state.isBulkPrintEnabled}
-                            onChange={(e) =>
-                              updateState({
-                                isBulkPrintEnabled: e.target.checked,
-                              })
-                            }
-                            style={{
-                              width: "22px",
-                              height: "22px",
-                              cursor: "pointer",
-                              accentColor: "#4CAF50",
-                            }}
-                          />
-                          <label
-                            htmlFor="bulkPrintCheckbox"
-                            style={{
-                              color: "white",
-                              fontSize: "1.1rem",
-                              fontWeight: "bold",
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            Bulk Printing
-                          </label>
-                        </div>
+                          Bulk Printing
+                        </label>
                       </div>
                     </div>
+
                     <div
-                      className="flex gap-10 items-center justify-end mt-4 mb-4 relative w-full"
-                      style={{ minHeight: "150px" }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "20px",
+                      }}
                     >
-                      {state.customerProfilePic && (
-                        <div
-                          onClick={() => handleImageClick("customer")}
-                          className="cursor-pointer hover:scale-105 transition-transform"
+                      {/* Total Amount Moved to the LEFT of the Telephone */}
+                      <div
+                        className="font-bold text-3xl whitespace-nowrap"
+                        style={{ color: "#4ade80" }}
+                      >
+                        Total: Rs. {formatDecimal(formData.total)}
+                      </div>
+
+                      {/* 📞 TELEPHONE MOVED TO THE RIGHT */}
+                      <div style={{ display: "flex", gap: "4px" }}>
+                        <input
+                          id="telephone_no"
+                          ref={refs.telephone_no}
+                          name="telephone_no"
+                          value={formData.telephone_no || ""}
+                          onChange={(e) =>
+                            handleInputChange("telephone_no", e.target.value)
+                          }
+                          onKeyDown={(e) => handleKeyDown(e, "telephone_no")}
+                          type="tel"
+                          maxLength="10"
+                          placeholder="දුරකථන අංකය"
+                          disabled={!!selectedPrintedCustomer}
+                          className="px-2 py-1 font-bold border rounded text-black placeholder-gray-500"
                           style={{
-                            position: "absolute",
-                            right: "340px",
-                            top: "80px",
-                            display: "flex",
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: "8px",
-                            zIndex: 10,
+                            backgroundColor: selectedPrintedCustomer
+                              ? "#4a5568"
+                              : "#f6f6ff",
+                            border: "1px solid #4a5568",
+                            height: "45px",
+                            fontSize: "16px",
+                            borderRadius: "0.5rem",
+                            boxSizing: "border-box",
+                            cursor: selectedPrintedCustomer
+                              ? "not-allowed"
+                              : "text",
+                            opacity: selectedPrintedCustomer ? 0.7 : 1,
+                            width: "160px",
                           }}
-                        >
-                          <span className="text-sm font-bold text-gray-400">
-                            ගැ
-                          </span>
-                          <div
+                        />
+                        {state.showSavePhoneButton && (
+                          <button
+                            onClick={savePhoneNumber}
+                            type="button"
                             style={{
-                              width: "100px",
-                              height: "100px",
-                              backgroundColor: "white",
-                              border: "5px solid #1ec139",
-                              borderRadius: "15px",
-                              overflow: "hidden",
-                              boxShadow: "0 10px 20px rgba(0,0,0,0.5)",
-                              display: "flex",
-                              justifyContent: "center",
-                              alignItems: "center",
+                              backgroundColor: "#4CAF50",
+                              color: "white",
+                              border: "none",
+                              padding: "0 10px",
+                              borderRadius: "0.5rem",
+                              cursor: "pointer",
+                              fontWeight: "bold",
+                              fontSize: "14px",
+                              height: "45px",
                             }}
                           >
-                            <img
-                              src={state.customerProfilePic}
-                              alt="Customer"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                              }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {state.supplierProfilePic && (
-                        <div
-                          onClick={() => handleImageClick("supplier")}
-                          className="cursor-pointer hover:scale-105 transition-transform"
-                          style={{
-                            position: "absolute",
-                            right: "20px",
-                            top: "80px",
-                            display: "flex",
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: "8px",
-                            zIndex: 10,
-                          }}
-                        >
-                          <span className="text-sm font-bold text-gray-400">
-                            සැ
-                          </span>
-                          <div
-                            style={{
-                              width: "100px",
-                              height: "100px",
-                              backgroundColor: "white",
-                              border: "5px solid #3b82f6",
-                              borderRadius: "15px",
-                              overflow: "hidden",
-                              boxShadow: "0 10px 20px rgba(0,0,0,0.5)",
-                              display: "flex",
-                              justifyContent: "center",
-                              alignItems: "center",
-                            }}
-                          >
-                            <img
-                              src={state.supplierProfilePic}
-                              alt="Supplier Profile"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                              }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      <ImagePreviewModal
-                        isOpen={state.isImageModalOpen}
-                        onClose={() => updateState({ isImageModalOpen: false })}
-                        data={state.selectedImageData}
-                      />
+                            Save
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
+                  {/* ✨ Row 1: Customer + Select + Loan + Bulk Price + Kuliya + Nattami ✨ */}
                   <div
-                    className="flex items-end gap-3 w-full"
-                    style={{ marginTop: "-160px" }}
+                    className="w-full flex flex-row gap-2 items-end mb-2"
+                    style={{ position: "relative", zIndex: 20 }}
                   >
-                    <div className="flex flex-col gap-2 w-full">
-                      <div
-                        className="flex-1 min-w-0"
-                        style={{ position: "relative", top: "-50px" }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "8px",
-                            alignItems: "center",
-                          }}
-                        >
-                          <input
-                            id="telephone_no"
-                            ref={refs.telephone_no}
-                            name="telephone_no"
-                            value={formData.telephone_no || ""}
-                            onChange={(e) =>
-                              handleInputChange("telephone_no", e.target.value)
-                            }
-                            onKeyDown={(e) => handleKeyDown(e, "telephone_no")}
-                            type="tel"
-                            maxLength="10"
-                            pattern="\d*"
-                            placeholder="දුරකථන අංකය (10 ඉලක්කම්)"
-                            disabled={!!selectedPrintedCustomer}
-                            className="px-2 py-1 font-bold w-full border rounded text-black placeholder-gray-500"
-                            style={{
-                              backgroundColor: selectedPrintedCustomer
-                                ? "#4a5568"
-                                : "#f6f6ff",
-                              border: "1px solid #4a5568",
-                              color: "black",
-                              height: "45px",
-                              fontSize: "18px",
-                              padding: "0 0.75rem",
-                              borderRadius: "0.5rem",
-                              boxSizing: "border-box",
-                              cursor: selectedPrintedCustomer
-                                ? "not-allowed"
-                                : "text",
-                              opacity: selectedPrintedCustomer ? 0.7 : 1,
-                              flex: 1,
-                            }}
-                          />
-                          {state.showSavePhoneButton && (
-                            <button
-                              onClick={savePhoneNumber}
-                              style={{
-                                backgroundColor: "#4CAF50",
-                                color: "white",
-                                border: "none",
-                                padding: "8px 16px",
-                                borderRadius: "0.5rem",
-                                cursor: "pointer",
-                                fontWeight: "bold",
-                                fontSize: "16px",
-                                whiteSpace: "nowrap",
-                                height: "45px",
-                              }}
-                            >
-                              Save
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <div
-                        className="flex-1 min-w-0"
-                        style={{ marginTop: "-40px" }}
-                      >
-                        <input
-                          id="customer_code_input"
-                          ref={refs.customer_code_input}
-                          name="customer_code"
-                          value={formData.customer_code || autoCustomerCode}
-                          onChange={(e) =>
-                            handleInputChange(
-                              "customer_code",
-                              e.target.value.toUpperCase(),
-                            )
-                          }
-                          onKeyDown={(e) =>
-                            handleKeyDown(e, "customer_code_input")
-                          }
-                          type="text"
-                          placeholder="පාරිභෝගික කේතය"
-                          className="px-2 py-1 uppercase font-bold w-full border rounded bg-white text-black placeholder-gray-500"
-                          style={{
-                            backgroundColor: "#0d0d4d",
-                            border: "1px solid #4a5568",
-                            color: "white",
-                            height: "45px",
-                            fontSize: "18px",
-                            padding: "0 0.75rem",
-                            borderRadius: "0.5rem",
-                            boxSizing: "border-box",
-                          }}
-                        />
-                      </div>
+                    {/* 1. Customer Code */}
+                    <div style={{ flex: "1.2" }}>
+                      <input
+                        id="customer_code_input"
+                        ref={refs.customer_code_input}
+                        name="customer_code"
+                        value={formData.customer_code || autoCustomerCode}
+                        onChange={(e) =>
+                          handleInputChange(
+                            "customer_code",
+                            e.target.value.toUpperCase(),
+                          )
+                        }
+                        onKeyDown={(e) =>
+                          handleKeyDown(e, "customer_code_input")
+                        }
+                        type="text"
+                        placeholder="පාරිභෝගික කේතය"
+                        className="px-2 py-1 uppercase font-bold w-full border rounded bg-white text-black placeholder-gray-500"
+                        style={{
+                          backgroundColor: "#0d0d4d",
+                          border: "1px solid #4a5568",
+                          color: "white",
+                          height: "45px",
+                          fontSize: "16px",
+                          padding: "0 0.5rem",
+                          borderRadius: "0.5rem",
+                          boxSizing: "border-box",
+                        }}
+                      />
                     </div>
+
+                    {/* 2. Customer Select */}
                     <div
-                      style={{
-                        flex: "0 0 150px",
-                        minWidth: "140px",
-                        marginLeft: "-100px",
-                      }}
+                      style={{ flex: "2", position: "relative", zIndex: 12 }}
                     >
                       <Select
                         id="customer_code_select"
                         ref={refs.customer_code_select}
+                        components={{ IndicatorSeparator: () => null }}
                         value={
                           formData.customer_code
                             ? {
-                              value: formData.customer_code,
-                              label: `${formData.customer_code}`,
-                            }
+                                value: formData.customer_code,
+                                label: `${formData.customer_code}`,
+                              }
                             : null
                         }
                         onChange={handleCustomerSelect}
@@ -2205,7 +2239,7 @@ const handleCustomerClick = async (
                             (c) =>
                               !customerSearchInput ||
                               (c.short_name || "").charAt(0).toUpperCase() ===
-                              customerSearchInput.charAt(0).toUpperCase(),
+                                customerSearchInput.charAt(0).toUpperCase(),
                           )
                           .map((c) => ({
                             value: c.short_name,
@@ -2224,7 +2258,7 @@ const handleCustomerClick = async (
                             ...b,
                             minHeight: "45px",
                             height: "45px",
-                            fontSize: "18px",
+                            fontSize: "16px",
                             backgroundColor: "white",
                             borderColor: "#4a5568",
                             borderRadius: "0.5rem",
@@ -2234,45 +2268,80 @@ const handleCustomerClick = async (
                             padding: "0 6px",
                             height: "45px",
                           }),
+                          indicatorsContainer: (b) => ({
+                            ...b,
+                            height: "45px",
+                            padding: "0px",
+                          }),
+                          clearIndicator: (b) => ({
+                            ...b,
+                            padding: "2px",
+                          }),
+                          dropdownIndicator: (b) => ({
+                            ...b,
+                            padding: "2px",
+                          }),
                           placeholder: (b) => ({
                             ...b,
-                            fontSize: "16px",
+                            fontSize: "14px",
                             color: "#a0aec0",
                           }),
                           input: (b) => ({
                             ...b,
-                            fontSize: "16px",
+                            fontSize: "14px",
                             color: "black",
                             fontWeight: "bold",
                           }),
                           singleValue: (b) => ({
                             ...b,
                             color: "black",
-                            fontSize: "18px",
+                            fontSize: "16px",
                             fontWeight: "bold",
                           }),
                           option: (b, s) => ({
                             ...b,
                             color: "black",
                             fontWeight: "bold",
-                            fontSize: "16px",
+                            fontSize: "14px",
                             backgroundColor: s.isFocused ? "#e5e7eb" : "white",
                             cursor: "pointer",
                           }),
                           menu: (base) => ({
                             ...base,
                             marginTop: "4px",
-                            zIndex: 10003,
+                            zIndex: 9999,
                             position: "absolute",
                           }),
-                          menuPortal: (base) => ({ ...base, zIndex: 10003 }),
+                          menuPortal: (base) => ({ ...base, zIndex: 9999 }),
                         }}
                         menuPlacement="auto"
                         menuPortalTarget={document.body}
                       />
                     </div>
 
-                    <div style={{ flex: "0 0 80px", minWidth: "120px" }}>
+                    {/* 3. Loan Amount (Moved here) */}
+                    <div style={{ flex: "1.5" }}>
+                      <div
+                        className="rounded-lg border relative bg-white flex items-center justify-start pl-2 pt-1"
+                        style={{
+                          height: "45px",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <span
+                          className="text-black font-bold"
+                          style={{ fontSize: "14px" }}
+                        >
+                          Rs.{" "}
+                          {loanAmount < 0
+                            ? formatDecimal(Math.abs(loanAmount))
+                            : formatDecimal(loanAmount)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 4. Bulk Price (Moved here) */}
+                    <div style={{ flex: "1.2" }}>
                       <input
                         id="price_per_kg"
                         ref={refs.price_per_kg}
@@ -2289,55 +2358,80 @@ const handleCustomerClick = async (
                             updateState({ bulkPrice: e.target.value });
                           }
                         }}
-                        onKeyDown={(e) => handleKeyDown(e, "price_per_kg")}
+                        onKeyDown={(e) => {
+                          const blockedKeys = ["e", "E", "+", "-"];
+                          if (blockedKeys.includes(e.key)) e.preventDefault();
+                          handleKeyDown(e, "price_per_kg");
+                        }}
                         placeholder="එකවර මිල"
-                        className="px-2 py-1 uppercase font-bold w-full border rounded bg-white text-black placeholder-gray-500"
+                        className="px-2 py-1 uppercase font-bold w-full border rounded bg-white text-black placeholder-gray-500 text-center"
                         style={{
                           backgroundColor: "#0d0d4d",
                           border: "1px solid #4a5568",
                           color: "white",
                           height: "45px",
-                          fontSize: "18px",
-                          padding: "0 0.75rem",
+                          fontSize: "16px",
+                          padding: "0 0.5rem",
                           borderRadius: "0.5rem",
                           boxSizing: "border-box",
                         }}
                       />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className="rounded-lg border relative bg-white flex items-center justify-start pl-2 pt-2.5"
-                        style={{
-                          flex: "0 0 100px",
-                          marginLeft: "5px",
-                          height: "45px",
-                        }}
-                      >
-                        <span className="absolute left-2 top-1 text-gray-500 font-bold text-[12px] pointer-events-none">
-                          Loan Amount
-                        </span>
-                        <span
-                          className="text-black font-bold"
-                          style={{ fontSize: "18px" }}
-                        >
-                          Rs.{" "}
-                          {loanAmount < 0
-                            ? formatDecimal(Math.abs(loanAmount))
-                            : formatDecimal(loanAmount)}
-                        </span>
+
+                    {/* 5 & 6. Kuliya & Nattami */}
+                    {[
+                      {
+                        id: "kuliya",
+                        placeholder: "කුලිය",
+                        fieldRef: refs.kuliya,
+                      },
+                      {
+                        id: "nattami",
+                        placeholder: "නාට්ටාමි",
+                        fieldRef: refs.nattami,
+                      },
+                    ].map(({ id, placeholder, fieldRef }) => (
+                      <div key={id} style={{ flex: "1" }}>
+                        <input
+                          id={id}
+                          ref={fieldRef}
+                          name={id}
+                          type="text"
+                          value={formData[id] || ""}
+                          onChange={(e) => {
+                            handleInputChange(id, e.target.value);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleKeyDown(e, id);
+                            }
+                          }}
+                          placeholder={placeholder}
+                          className="px-2 py-1 uppercase font-bold border rounded bg-white text-black placeholder-gray-500 text-center w-full"
+                          style={{
+                            backgroundColor: "white",
+                            borderRadius: "0.5rem",
+                            textAlign: "center",
+                            fontSize: "15px",
+                            height: "45px",
+                            boxSizing: "border-box",
+                          }}
+                        />
                       </div>
-                    </div>
+                    ))}
                   </div>
 
-                  {/* 🟢 TOP ROW: Supplier, Item, Kuliya, Nattami */}
-                  <div className="w-full flex flex-row gap-2 items-end mt-4">
-                    {/* Supplier Code */}
+                  {/* ✨ Row 2: Supplier + Item + Weight + Price + Packs ✨ */}
+                  <div
+                    className="w-full flex flex-row gap-2 items-end mb-2"
+                    style={{ position: "relative", zIndex: 10 }}
+                  >
                     <div style={{ flex: "1" }}>
                       <input
                         id="supplier_code"
                         ref={refs.supplier_code}
                         name="supplier_code"
-                        value={formData.supplier_code}
+                        value={formData.supplier_code || ""}
                         onChange={(e) =>
                           handleInputChange(
                             "supplier_code",
@@ -2353,7 +2447,7 @@ const handleCustomerClick = async (
                           border: "1px solid #4a5568",
                           color: "white",
                           height: "55px",
-                          fontSize: "22px",
+                          fontSize: "20px",
                           padding: "0 0.75rem",
                           borderRadius: "0.5rem",
                           boxSizing: "border-box",
@@ -2361,14 +2455,7 @@ const handleCustomerClick = async (
                       />
                     </div>
 
-                    {/* Item Select Dropdown */}
-                    <div
-                      style={{
-                        flex: "1.2",
-                        position: "relative",
-                        zIndex: 10000,
-                      }}
-                    >
+                    <div style={{ flex: "1.5" }}>
                       {(() => {
                         const currentFilteredOptions = [...items]
                           .filter((item) => {
@@ -2396,6 +2483,10 @@ const handleCustomerClick = async (
                         return (
                           <Select
                             ref={refs.item_code_select}
+                            components={{
+                              DropdownIndicator: () => null,
+                              IndicatorSeparator: () => null,
+                            }}
                             openMenuOnFocus={false}
                             isSearchable
                             tabSelectsValue={false}
@@ -2408,9 +2499,9 @@ const handleCustomerClick = async (
                             value={
                               formData.item_code
                                 ? {
-                                  value: formData.item_code,
-                                  label: `${formData.item_code} - ${formData.item_name}`,
-                                }
+                                    value: formData.item_code,
+                                    label: `${formData.item_code} - ${formData.item_name}`,
+                                  }
                                 : null
                             }
                             onInputChange={(value, meta) => {
@@ -2496,27 +2587,45 @@ const handleCustomerClick = async (
                                 ...base,
                                 height: "55px",
                                 minHeight: "55px",
-                                fontSize: "1.3rem",
-                                backgroundColor: "white",
-                                borderColor: "#4a5568",
+                                fontSize: "1.1rem",
+                                backgroundColor: highlightItemDropdown
+                                  ? "#fffae6"
+                                  : "white",
+                                borderColor: highlightItemDropdown
+                                  ? "#f59e0b"
+                                  : "#4a5568",
+                                borderWidth: highlightItemDropdown
+                                  ? "2px"
+                                  : "1px",
                                 borderRadius: "0.5rem",
-                                zIndex: 10001,
+                                boxShadow: highlightItemDropdown
+                                  ? "0 0 8px rgba(245, 158, 11, 0.6)"
+                                  : "none",
                               }),
                               valueContainer: (base) => ({
                                 ...base,
                                 padding: "0 0.5rem",
                                 height: "55px",
                               }),
+                              indicatorsContainer: (base) => ({
+                                ...base,
+                                height: "55px",
+                                padding: "0px",
+                              }),
                               input: (base) => ({
                                 ...base,
-                                color: "black",
-                                fontSize: "1.3rem",
+                                color: highlightItemDropdown
+                                  ? "#d97706"
+                                  : "black",
+                                fontSize: "1.1rem",
                               }),
                               singleValue: (base) => ({
                                 ...base,
-                                color: "black",
+                                color: highlightItemDropdown
+                                  ? "#d97706"
+                                  : "black",
                                 fontWeight: "bold",
-                                fontSize: "1.3rem",
+                                fontSize: "1.1rem",
                               }),
                               option: (base, state) => ({
                                 ...base,
@@ -2525,21 +2634,20 @@ const handleCustomerClick = async (
                                 backgroundColor: state.isFocused
                                   ? "#e5e7eb"
                                   : "white",
-                                fontSize: "1.1rem",
+                                fontSize: "1rem",
                                 ...(state.isSelected && {
                                   backgroundColor: "#e5e7eb",
                                 }),
-                                zIndex: 10002,
                               }),
                               menu: (base) => ({
                                 ...base,
                                 marginTop: "4px",
-                                zIndex: 10003,
+                                zIndex: 9999,
                                 position: "absolute",
                               }),
                               menuPortal: (base) => ({
                                 ...base,
-                                zIndex: 10003,
+                                zIndex: 9999,
                               }),
                             }}
                             openMenuOnClick={true}
@@ -2550,59 +2658,6 @@ const handleCustomerClick = async (
                       })()}
                     </div>
 
-                    {/* Kuliya & Nattami */}
-                    {[
-                      {
-                        id: "kuliya",
-                        placeholder: "කුලිය",
-                        fieldRef: refs.kuliya,
-                      },
-                      {
-                        id: "nattami",
-                        placeholder: "නාට්ටාමි",
-                        fieldRef: refs.nattami,
-                      },
-                    ].map(({ id, placeholder, fieldRef }) => (
-                      <div key={id} style={{ flex: "0.6" }}>
-                        <input
-                          id={id}
-                          ref={fieldRef}
-                          name={id}
-                          type="text"
-                          value={formData[id]}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (/^\d*\.?\d*$/.test(val) || val === "") {
-                              handleInputChange(id, val);
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            const blockedKeys = ["e", "E", "+", "-"];
-                            if (blockedKeys.includes(e.key)) {
-                              e.preventDefault();
-                            }
-                            if (e.key === "Enter") {
-                              handleKeyDown(e, id);
-                            }
-                          }}
-                          placeholder={placeholder}
-                          className="px-2 py-1 uppercase font-bold border rounded bg-white text-black placeholder-gray-500 text-center"
-                          style={{
-                            backgroundColor: "white",
-                            borderRadius: "0.5rem",
-                            textAlign: "right",
-                            fontSize: "22px",
-                            height: "55px",
-                            boxSizing: "border-box",
-                            width: "100%",
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* 🟢 BOTTOM ROW: Weight, Price, Packs ONLY */}
-                  <div className="w-full flex flex-row gap-2 items-end mt-4">
                     {[
                       {
                         id: "weight",
@@ -2620,7 +2675,7 @@ const handleCustomerClick = async (
                         fieldRef: refs.packs,
                       },
                     ].map(({ id, placeholder, fieldRef }) => (
-                      <div key={id} style={{ flex: "1" }}>
+                      <div key={id} style={{ flex: "0.8" }}>
                         <input
                           id={id}
                           ref={fieldRef}
@@ -2641,6 +2696,10 @@ const handleCustomerClick = async (
                             }
                           }}
                           onKeyDown={(e) => {
+                            const blockedKeys = ["e", "E", "+", "-"];
+                            if (blockedKeys.includes(e.key)) {
+                              e.preventDefault();
+                            }
                             handleKeyDown(e, id);
                           }}
                           placeholder={placeholder}
@@ -2649,8 +2708,8 @@ const handleCustomerClick = async (
                             backgroundColor: "white",
                             borderRadius: "0.5rem",
                             textAlign: "right",
-                            fontSize: "26px",
-                            height: "60px",
+                            fontSize: "22px",
+                            height: "55px",
                             boxSizing: "border-box",
                             width: "100%",
                           }}
@@ -2659,22 +2718,9 @@ const handleCustomerClick = async (
                     ))}
                   </div>
 
-                  {/* Total displayed directly below the 3 boxes */}
-                  <div className="w-full flex justify-end mt-2">
-                    <div
-                      className="font-bold"
-                      style={{
-                        color: "#4ade80",
-                        paddingRight: "10px",
-                        fontSize: "28px",
-                      }}
-                    >
-                      Total: Rs. {formatDecimal(formData.total)}
-                    </div>
-                  </div>
-
                   <button type="submit" style={{ display: "none" }}></button>
                 </form>
+
                 {errors.form && (
                   <div className="mt-6 p-3 bg-red-100 text-red-700 rounded-xl text-lg">
                     {errors.form}
@@ -2682,175 +2728,21 @@ const handleCustomerClick = async (
                 )}
               </div>
 
-              {/* ✨ SCROLLABLE MAIN TABLE SECTION ✨ */}
-              <div
-                className="flex-1 mt-3 min-h-0"
-                style={{ overflowY: "auto", overflowX: "hidden" }}
-              >
+              {/* ✨ SCROLLABLE MAIN TABLE SECTION - NO INTERNAL SCROLL ✨ */}
+              <div className="w-full mt-2">
                 {displayedSales.length > 0 ? (
-                  <>
-                    <table
-                      className="min-w-full border-gray-200 rounded-xl"
-                      style={{
-                        backgroundColor: "#000000",
-                        color: "white",
-                        borderCollapse: "collapse",
-                        margin: "0px 0",
-                        width: "100%",
-                        fontSize: "16px",
-                      }}
-                    >
-                      <thead>
-                        <tr style={{ backgroundColor: "#000000" }}>
-                          <th
-                            className="border text-center"
-                            style={{
-                              backgroundColor: "#f5fafb",
-                              color: "#000000",
-                              width: "30px",
-                              padding: "12px 6px",
-                            }}
-                          ></th>
-                          {[
-                            "Sup code",
-                            "කේතය",
-                            "අයිතමය",
-                            "බර(kg)",
-                            "මිල",
-                            "අගය",
-                            "මලු",
-                            "කුලිය",
-                            "නාට්ටාමි",
-                            "Actions",
-                          ].map((header, index) => (
-                            <th
-                              key={index}
-                              className="border text-center"
-                              style={{
-                                backgroundColor: "#f5fafb",
-                                color: "#000000",
-                                whiteSpace: "nowrap",
-                                fontWeight: "bold",
-                                padding: "12px 6px",
-                              }}
-                            >
-                              {header}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {displayedSales.map((s, idx) => {
-                          const isSelected = state.selectedSalesIds.includes(
-                            s.id,
-                          );
-                          return (
-                            <tr
-                              key={idx}
-                              tabIndex={0}
-                              className={`text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${isSelected ? "bg-blue-900" : ""}`}
-                              onClick={() => handleEditClick(s)}
-                              onContextMenu={(e) => handleRightClick(e, s)}
-                              style={{
-                                backgroundColor: isSelected
-                                  ? "#1e40af"
-                                  : "transparent",
-                              }}
-                            >
-                              <td
-                                className="border text-center"
-                                style={{ padding: "10px 6px" }}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleSaleSelection(s.id)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  style={{
-                                    cursor: "pointer",
-                                    width: "18px",
-                                    height: "18px",
-                                  }}
-                                />
-                              </td>
-                              <td
-                                className="border"
-                                style={{ padding: "10px 6px" }}
-                              >
-                                {s.supplier_code}
-                              </td>
-                              <td
-                                className="border"
-                                style={{ padding: "10px 6px" }}
-                              >
-                                {s.item_code}
-                              </td>
-                              <td
-                                className="border"
-                                style={{ padding: "10px 6px" }}
-                              >
-                                {s.item_name}
-                              </td>
-                              <td
-                                className="border text-right pr-3"
-                                style={{ padding: "10px 6px" }}
-                              >
-                                {formatDecimal(s.weight)}
-                              </td>
-                              <td
-                                className="border text-right pr-3"
-                                style={{ padding: "10px 6px" }}
-                              >
-                                {formatDecimal(s.price_per_kg)}
-                              </td>
-                              <td
-                                className="border text-right pr-3"
-                                style={{ padding: "10px 6px" }}
-                              >
-                                {formatDecimal(
-                                  (parseFloat(s.weight) || 0) *
-                                  (parseFloat(s.price_per_kg) || 0),
-                                )}
-                              </td>
-                              <td
-                                className="border text-center"
-                                style={{ padding: "10px 6px" }}
-                              >
-                                {s.packs}
-                              </td>
-                              <td
-                                className="border text-red-500 font-bold text-right pr-3"
-                                style={{ padding: "10px 6px" }}
-                              >
-                                {formatDecimal(s.Kuliya)}
-                              </td>
-                              <td
-                                className="border text-orange-500 font-bold text-right pr-3"
-                                style={{ padding: "10px 6px" }}
-                              >
-                                {formatDecimal(s.Nattami)}
-                              </td>
-                              <td
-                                className="border text-center"
-                                style={{ padding: "10px 6px", width: "70px" }}
-                              >
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteRecord(s.id);
-                                  }}
-                                  className="text-black font-bold py-1 px-2 rounded-md bg-white hover:bg-red-500 hover:text-white transition-colors"
-                                  style={{ minWidth: "40px", fontSize: "16px" }}
-                                >
-                                  🗑️
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                  <div className="w-full">
+                    <div style={{ width: "100%", overflowX: "auto" }}>
+                      <ActiveBillTable
+                        displayedSales={displayedSales}
+                        selectedSalesIds={state.selectedSalesIds}
+                        toggleSaleSelection={toggleSaleSelection}
+                        handleEditClick={handleEditClick}
+                        handleRightClick={handleRightClick}
+                        handleDeleteRecord={handleDeleteRecord}
+                        formatDecimal={formatDecimal}
+                      />
+                    </div>
 
                     <ContextMenu
                       show={state.bulkUpdateContextMenu.show}
@@ -2860,19 +2752,14 @@ const handleCustomerClick = async (
                       selectedCount={state.selectedSalesIds.length}
                     />
 
-                    {displayedSales.length > 0 && (
-                      <div style={{ flexShrink: 0 }}>
-                        <SalesSummaryFooter
-                          sales={displayedSales}
-                          formatDecimal={formatDecimal}
-                        />
-                      </div>
-                    )}
+                    <div style={{ marginTop: "10px" }}>
+                      <SalesSummaryFooter
+                        sales={displayedSales}
+                        formatDecimal={formatDecimal}
+                      />
+                    </div>
 
-                    <div
-                      className="flex gap-4 items-start w-full mt-4 pb-4"
-                      style={{ flexShrink: 0 }}
-                    >
+                    <div className="flex gap-4 items-start w-full mt-4 pb-2">
                       <ItemSummary
                         sales={displayedSales}
                         formatDecimal={formatDecimal}
@@ -2882,403 +2769,16 @@ const handleCustomerClick = async (
                         formatDecimal={formatDecimal}
                       />
                     </div>
-                  </>
+                  </div>
                 ) : (
-                  <div
-                    style={{
-                      height: "100%",
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    {/* Header */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "8px",
-                        padding: "0 4px",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <span
-                        style={{
-                          color: "#888",
-                          fontSize: "15px",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        📋 All Sales Records ({allSalesRecords.length} total)
-                      </span>
-
-                      {isLoadingAllSales && (
-                        <span
-                          style={{
-                            color: "#ffd700",
-                            fontSize: "14px",
-                          }}
-                        >
-                          Loading...
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Scrollable Table Container */}
-                    <div
-                      style={{
-                        flex: 1,
-                        overflowY: "auto",
-                        overflowX: "hidden",
-                        border: "1px solid #4a5568",
-                        borderRadius: "0.5rem",
-                        backgroundColor: "#1a1a2e",
-                        minHeight: 0,
-                      }}
-                    >
-                      <table
-                        style={{
-                          width: "100%",
-                          borderCollapse: "collapse",
-                          color: "white",
-                          fontSize: "16px",
-                          marginTop: "-6px",
-                        }}
-                      >
-                        {/* Transparent Sticky Header */}
-                        <thead
-                          style={{
-                            position: "sticky",
-                            top: 0,
-                            zIndex: 1,
-                            background: "transparent",
-                            backdropFilter: "blur(1px)",
-                          }}
-                        >
-                          <tr
-                            style={{
-                              backgroundColor: "transparent",
-                              borderBottom: "1px solid rgba(255,255,255,0.1)",
-                            }}
-                          >
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "center",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Bill No
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "center",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Customer
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "center",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Supplier
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "center",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Item Code
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "center",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Item Name
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "right",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Weight
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "right",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Price/kg
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "right",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Packs
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "right",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Kuliya
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "right",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Nattami
-                            </th>
-                            <th
-                              style={{
-                                padding: "12px 6px",
-                                textAlign: "right",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              Total
-                            </th>
-                          </tr>
-                        </thead>
-
-                        <tbody>
-                          {isLoadingAllSales ? (
-                            <tr>
-                              <td
-                                colSpan="11"
-                                style={{
-                                  padding: "40px",
-                                  textAlign: "center",
-                                  color: "#888",
-                                }}
-                              >
-                                Loading sales records...
-                              </td>
-                            </tr>
-                          ) : allSalesRecords.length === 0 ? (
-                            <tr>
-                              <td
-                                colSpan="11"
-                                style={{
-                                  padding: "40px",
-                                  textAlign: "center",
-                                  color: "#888",
-                                  fontStyle: "italic",
-                                }}
-                              >
-                                No sales records found in database.
-                              </td>
-                            </tr>
-                          ) : (
-                            allSalesRecords.map((sale, index) => (
-                              <tr
-                                key={sale.id || index}
-                                onClick={() => handleEditClick(sale)}
-                                style={{
-                                  borderBottom: "1px solid #2a2a3e",
-                                  cursor: "pointer",
-                                  backgroundColor:
-                                    editingSaleId === sale.id
-                                      ? "#1e3a5f"
-                                      : "transparent",
-                                  transition: "background-color 0.2s",
-                                }}
-                                onMouseEnter={(e) => {
-                                  if (editingSaleId !== sale.id) {
-                                    e.currentTarget.style.backgroundColor =
-                                      "#252540";
-                                  }
-                                }}
-                                onMouseLeave={(e) => {
-                                  if (editingSaleId !== sale.id) {
-                                    e.currentTarget.style.backgroundColor =
-                                      "transparent";
-                                  }
-                                }}
-                              >
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {sale.bill_no || "-"}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "center",
-                                    fontWeight: "500",
-                                  }}
-                                >
-                                  {sale.customer_code || "-"}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {sale.supplier_code || "-"}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {sale.item_code || "-"}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "center",
-                                    maxWidth: "100px",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                  title={sale.item_name}
-                                >
-                                  {sale.item_name || "-"}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "right",
-                                  }}
-                                >
-                                  {formatDecimal(sale.weight)}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "right",
-                                  }}
-                                >
-                                  {formatDecimal(sale.price_per_kg)}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "right",
-                                  }}
-                                >
-                                  {sale.packs || "0"}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "right",
-                                    color: sale.Kuliya > 0 ? "#ffd700" : "#888",
-                                  }}
-                                >
-                                  {formatDecimal(sale.Kuliya || 0)}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "right",
-                                    color:
-                                      sale.Nattami > 0 ? "#ff9800" : "#888",
-                                  }}
-                                >
-                                  {formatDecimal(sale.Nattami || 0)}
-                                </td>
-
-                                <td
-                                  style={{
-                                    padding: "10px 6px",
-                                    textAlign: "right",
-                                    fontWeight: "bold",
-                                    color: "#4ade80",
-                                  }}
-                                >
-                                  {formatDecimal(sale.total || 0)}
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Footer Summary */}
-                    {allSalesRecords.length > 0 && !isLoadingAllSales && (
-                      <div
-                        style={{
-                          padding: "15px",
-                          backgroundColor: "#0f0f23",
-                          borderRadius: "0.5rem",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          marginTop: "6px",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <span style={{ color: "#888", fontSize: "14px" }}>
-                          Total Records: {allSalesRecords.length}
-                        </span>
-
-                        <span style={{ color: "#888", fontSize: "14px" }}>
-                          Total Weight:{" "}
-                          {formatDecimal(
-                            allSalesRecords.reduce(
-                              (sum, s) => sum + (parseFloat(s.weight) || 0),
-                              0,
-                            ),
-                          )}{" "}
-                          kg
-                        </span>
-
-                        <span
-                          style={{
-                            color: "#4ade80",
-                            fontSize: "14px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          Total Value: Rs.{" "}
-                          {formatDecimal(
-                            allSalesRecords.reduce(
-                              (sum, s) => sum + (parseFloat(s.total) || 0),
-                              0,
-                            ),
-                          )}
-                        </span>
-                      </div>
-                    )}
+                  <div className="w-full">
+                    <AllSalesRecords
+                      allSalesRecords={allSalesRecords}
+                      isLoadingAllSales={isLoadingAllSales}
+                      editingSaleId={editingSaleId}
+                      handleEditClick={handleEditClick}
+                      formatDecimal={formatDecimal}
+                    />
                   </div>
                 )}
               </div>
@@ -3291,9 +2791,10 @@ const handleCustomerClick = async (
           style={{
             backgroundColor: "#1ec139ff",
             borderRadius: "0.75rem",
-            height: "100%",
+            position: "sticky",
+            top: "10px",
+            height: "calc(100vh - 20px)",
             overflow: "hidden",
-            marginTop: "-30px"
           }}
         >
           {hasData ? (

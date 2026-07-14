@@ -81,6 +81,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/customers-loans/{customerId}/total', [CustomersLoanController::class, 'getCustomerLoanTotal']);
     Route::put('/customers-loans/{id}', [CustomersLoanController::class, 'update']);
     Route::delete('/customers-loans/{id}', [CustomersLoanController::class, 'destroy']);
+    Route::get('/customers/{id}/loan-breakdown', [CustomersLoanController::class, 'getCustomerLoanBreakdown']);
+    
+
 
     // GRN UPDATE
     Route::get('/not-changing-grns', [GrnEntryController::class, 'getNotChangingGRNs']);
@@ -102,6 +105,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/bill-numbers', [ReportController::class, 'getBillNumbers']);
     Route::get('/company-info', [ReportController::class, 'getCompanyInfo']);
     Route::get('/sales-report', [ReportController::class, 'salesReport']);
+    Route::get('/reports/farmer-loan-payable', [ReportController::class, 'getFarmerLoanPayableReport']);
 
     Route::prefix('reports')->group(function () {
         Route::post('/generate', [ReportController::class, 'generateReport']);
@@ -240,6 +244,7 @@ Route::get('/farmer-loans/balance/{code}', [FarmerLoanController::class, 'getFar
 Route::get('/supplier-loan/search', [SupplierLoanController::class, 'findLoan']);
 Route::get('/supplier-loans/report', [SupplierLoanController::class, 'getReport']);
 Route::post('/suppliers/delete-loan-record', [SupplierLoanController::class, 'deleteLoanRecord']);
+Route::get('/farmer-loans/{code}/breakdown', [FarmerLoanController::class, 'getBreakdown']);
 //bulk update in sales entry page
 Route::post('/sales/bulk-update-customer', [SalesEntryController::class, 'bulkUpdateCustomer']);
 Route::post('/sales/bulk-update-supplier', [SalesEntryController::class, 'bulkUpdateSupplier']);
@@ -247,4 +252,4 @@ Route::post('/sales/bulk-update-supplier', [SalesEntryController::class, 'bulkUp
 Route::post('/sales/calculate-kuliya', [SalesEntryController::class, 'calculateKuliyaApi']);
 //lorry transaction routes
 Route::apiResource('lorry-transactions', LorryTransactionController::class);
-
+Route::get('/suppliers/{code}/loan-breakdown', [CustomersLoanController::class, 'getSupplierLoanBreakdown']);
