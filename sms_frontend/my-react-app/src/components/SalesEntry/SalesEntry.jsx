@@ -90,7 +90,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
   const fetchAllSalesRecords = async () => {
     try {
       setIsLoadingAllSales(true);
-      const response = await api.get("/sales/all-sales-data");
+      const response = await api.get(
+        `/sales/all-sales-data?_t=${new Date().getTime()}`,
+      );
       const salesData =
         response.data.sales || response.data.data || response.data;
       const salesArray = Array.isArray(salesData) ? salesData : [];
@@ -105,7 +107,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
 
   const fetchActiveSales = async () => {
     try {
-      const res = await api.get(routes.sales);
+      const res = await api.get(`${routes.sales}?_t=${new Date().getTime()}`);
       const data = res.data.data || res.data.sales || res.data || [];
       updateState({ allSales: Array.isArray(data) ? data : [] });
     } catch (error) {
@@ -188,6 +190,8 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     bulkUpdateSupplierCode: "",
     bulkUpdateContextMenu: { x: 0, y: 0, show: false },
     isBulkPrintEnabled: true,
+    // FORCE UPDATE TRIGGER - used to force re-render of CustomerList after print
+    forceUpdate: Date.now(),
   });
 
   const setFormData = (updater) =>
@@ -610,7 +614,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
       const userData = JSON.parse(localStorage.getItem("user"));
       const [resSales, resCustomers, resItems, resSuppliers] =
         await Promise.all([
-          api.get(routes.sales),
+          api.get(`${routes.sales}?_t=${new Date().getTime()}`),
           api.get(routes.customers),
           api.get(routes.items),
           api.get(routes.suppliers),
@@ -909,8 +913,13 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     billNo = null,
     salesRecords = [],
   ) => {
-    if (state.isPrinting) return;
+    // ✅ Allow click even if printing is in progress? We'll show alert but not block entirely
+    if (state.isPrinting) {
+      alert("Printing in progress. Please wait.");
+      return;
+    }
 
+    // Admin mode opens via AdminView ref
     if (currentUser?.role === "Admin") {
       if (adminViewRef.current && adminViewRef.current.openCustomerBill) {
         adminViewRef.current.openCustomerBill(
@@ -928,18 +937,14 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
     let selectionKey = customerCode;
     if (isPrinted && billNo) selectionKey = `${customerCode}-${billNo}`;
 
-    // Check if currently selected
     const isCurrentlySelected = isPrinted
       ? state.selectedPrintedCustomer === selectionKey
       : state.selectedUnprintedCustomer === selectionKey;
 
-    // If already selected, DESELECT (toggle off)
     if (isCurrentlySelected) {
-      setFormData({
-        ...initialFormData,
-      });
-
-      updateState({
+      setState((prev) => ({
+        ...prev,
+        formData: initialFormData,
         selectedPrintedCustomer: null,
         selectedUnprintedCustomer: null,
         currentBillNo: null,
@@ -951,23 +956,9 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         selectedSaleForBreakdown: null,
         gridPricePerKg: "",
         loanAmount: 0,
-      });
-
+      }));
       return;
     }
-
-    // If not selected, SELECT it
-    updateState({
-      selectedPrintedCustomer: isPrinted ? selectionKey : null,
-      selectedUnprintedCustomer: !isPrinted ? selectionKey : null,
-      currentBillNo: isPrinted ? billNo : null,
-      editingSaleId: null,
-      isManualClear: false,
-      customerSearchInput: "",
-      priceManuallyChanged: false,
-      bulkPrice: "",
-      selectedSaleForBreakdown: null,
-    });
 
     const customer = customers.find(
       (x) =>
@@ -975,7 +966,6 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         String(customerCode).toUpperCase(),
     );
 
-    // Calculate totals for the customer
     const totals = salesRecords.reduce(
       (acc, s) => {
         const weight = Math.abs(parseFloat(s.weight) || 0);
@@ -1010,17 +1000,26 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         fetchedGivenAmount;
     }
 
-    setFormData({
-      ...initialFormData,
-      customer_code: customerCode,
-      customer_name: customer?.name || "",
-      telephone_no: customer?.telephone_no || "",
-      given_amount: fetchedGivenAmount,
-    });
-
-    updateState({
+    setState((prev) => ({
+      ...prev,
+      formData: {
+        ...initialFormData,
+        customer_code: customerCode,
+        customer_name: customer?.name || "",
+        telephone_no: customer?.telephone_no || "",
+        given_amount: fetchedGivenAmount,
+      },
+      selectedPrintedCustomer: isPrinted ? selectionKey : null,
+      selectedUnprintedCustomer: !isPrinted ? selectionKey : null,
+      currentBillNo: isPrinted ? billNo : null,
+      editingSaleId: null,
+      isManualClear: false,
+      customerSearchInput: "",
+      priceManuallyChanged: false,
+      bulkPrice: "",
+      selectedSaleForBreakdown: null,
       gridPricePerKg: "",
-    });
+    }));
 
     fetchLoanAmount(customerCode);
 
@@ -1346,9 +1345,14 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         });
       }
 
+      // ✅ Refresh active sales and all records
       await fetchActiveSales();
       await fetchAllSalesRecords();
 
+      // ✅ Force re-render of CustomerList by updating forceUpdate timestamp
+      updateState({ forceUpdate: Date.now() });
+
+      // Clear selected customers and form
       updateState({
         selectedPrintedCustomer: null,
         selectedUnprintedCustomer: null,
@@ -1518,7 +1522,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
         given_amount: formData.given_amount
           ? parseFloat(formData.given_amount)
           : null,
-        // ✅ මේ වෙනස මගින් හිස්ව තිබුනොත් ඔටෝ 50ක් එකතු වීම නතර වේ
+        // ✅ Kuliya and Nattami are explicitly set to 0 if not provided
         kuliya: formData.kuliya ? parseFloat(formData.kuliya) : 0,
         nattami: formData.nattami ? parseFloat(formData.nattami) : 0,
         ...(billPrintedStatus && { bill_printed: billPrintedStatus }),
@@ -1884,7 +1888,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
               handleCustomerClick={handleCustomerClick}
               formatDecimal={formatDecimal}
               allSales={allSales}
-              lastUpdate={state.forceUpdate || state.windowFocused}
+              lastUpdate={state.forceUpdate || state.windowFocused} // ✅ forceUpdate passed
               isCashFilterActive={state.isCashFilterActive}
               toggleCashFilter={() =>
                 updateState({ isCashFilterActive: !state.isCashFilterActive })
@@ -2812,7 +2816,7 @@ export default function SalesEntry({ printMode: propPrintMode = "thermal" }) {
               handleCustomerClick={handleCustomerClick}
               formatDecimal={formatDecimal}
               allSales={allSales}
-              lastUpdate={state.forceUpdate || state.windowFocused}
+              lastUpdate={state.forceUpdate || state.windowFocused} // ✅ forceUpdate passed
             />
           ) : (
             <div

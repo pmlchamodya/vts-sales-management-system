@@ -250,24 +250,8 @@ class SalesEntryController extends Controller
                 }
             }
 
-            $commissionAmount = 0.00;
-
-            $commissionRule = Commission::where('item_code', $validated['item_code'])
-                ->where('starting_price', '<=', $pricePerKg)
-                ->where('end_price', '>=', $pricePerKg)
-                ->first()
-                ?? Commission::where('supplier_code', $validated['supplier_code'])
-                    ->where('starting_price', '<=', $pricePerKg)
-                    ->where('end_price', '>=', $pricePerKg)
-                    ->first()
-                ?? Commission::where('type', 'Z')
-                    ->where('starting_price', '<=', $pricePerKg)
-                    ->where('end_price', '>=', $pricePerKg)
-                    ->first();
-
-            if ($commissionRule) {
-                $commissionAmount = $commissionRule->commission_amount;
-            }
+            // Flat 10% commission logic
+            $commissionAmount = $pricePerKg * 0.10;
 
             $customerPackCost = $item->pack_cost ?? 0;
             $customerPackLabour = $item->pack_due ?? 0;
@@ -511,7 +495,9 @@ class SalesEntryController extends Controller
             $formattedDate = \Carbon\Carbon::parse($settingDate)->format('Y-m-d');
 
             $newPricePerKg = $validatedData['price_per_kg'];
-            $commissionAmount = 0.00;
+            
+            // Flat 10% commission logic
+            $commissionAmount = $newPricePerKg * 0.10;
 
             $item = Item::where('no', $validatedData['item_code'])->first();
             if (!$item) {
@@ -519,25 +505,6 @@ class SalesEntryController extends Controller
             }
 
             $newBagPrice = (float) ($item->pack_cost ?? 0);
-
-            $commissionRule = Commission::where('item_code', $validatedData['item_code'])
-                ->where('starting_price', '<=', $newPricePerKg)
-                ->where('end_price', '>=', $newPricePerKg)
-                ->orWhere(function ($query) use ($validatedData, $sale, $newPricePerKg) {
-                    $query->where('supplier_code', $validatedData['supplier_code'] ?? $sale->supplier_code)
-                        ->where('starting_price', '<=', $newPricePerKg)
-                        ->where('end_price', '>=', $newPricePerKg);
-                })
-                ->orWhere(function ($query) use ($newPricePerKg) {
-                    $query->where('type', 'Z')
-                        ->where('starting_price', '<=', $newPricePerKg)
-                        ->where('end_price', '>=', $newPricePerKg);
-                })
-                ->first();
-
-            if ($commissionRule) {
-                $commissionAmount = $commissionRule->commission_amount;
-            }
 
             $supplierPricePerKg = abs($newPricePerKg - $commissionAmount);
             $newSupplierTotal = $validatedData['weight'] * $supplierPricePerKg;
@@ -888,7 +855,6 @@ class SalesEntryController extends Controller
 
     public function processDay(Request $request)
     {
-        // (Full logic retained as per your controller)
         $recipientEmail = 'nethmavilhan@gmail.com';
         $processLogDate = $request->input('date') ?? now()->toDateString();
         $lastSetting = \App\Models\Setting::where('key', 'last_day_started_date')->first();
@@ -982,30 +948,6 @@ class SalesEntryController extends Controller
         $bill = DB::table('bill_links')->where('token', $token)->first();
         if (!$bill) return response()->json(['message' => 'Bill not found'], 404);
         return response()->json($bill);
-    }
-
-    public function bulkUpdateSupplier(Request $request)
-    {
-        // Code intentionally kept from your original
-        try {
-            $validated = $request->validate([
-                'sale_ids' => 'required|array',
-                'sale_ids.*' => 'exists:sales,id',
-                'supplier_code' => 'required|string|max:255'
-            ]);
-
-            $updatedSales = [];
-            foreach ($validated['sale_ids'] as $saleId) {
-                $sale = Sale::find($saleId);
-                $sale->supplier_code = strtoupper($validated['supplier_code']);
-                $sale->save();
-                $updatedSales[] = $sale;
-            }
-
-            return response()->json(['success' => true, 'sales' => $updatedSales]);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
     }
 
     public function bulkUpdateCustomer(Request $request)
