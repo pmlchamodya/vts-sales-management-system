@@ -54,7 +54,11 @@ const SupplierReport = () => {
   // Lorry Transactions Data
   const [lorryTransactions, setLorryTransactions] = useState([]);
 
-  // 👇 NEW: State to hold supplier specific loan transactions (Repayments & Sales)
+  // Lorry Editing States
+  const [editingLorryId, setEditingLorryId] = useState(null);
+  const [editLorryFormData, setEditLorryFormData] = useState({});
+
+  // State to hold supplier specific loan transactions (Repayments & Sales)
   const [supplierLoans, setSupplierLoans] = useState([]);
 
   // Lorry Transaction Form State
@@ -127,7 +131,7 @@ const SupplierReport = () => {
     }
   };
 
-  // 👇 NEW: Function to fetch supplier specific loans for the print out
+  // Function to fetch supplier specific loans for the print out
   const fetchSupplierLoans = useCallback(async (supplierCode) => {
     if (!supplierCode) return;
     try {
@@ -162,7 +166,7 @@ const SupplierReport = () => {
         setSummary({ printed: [], unprinted: [] });
       }
     } catch (error) {
-      console.error("❌ Error fetching summary data:", error.message);
+      console.error("Error fetching summary data:", error.message);
       setSummary({ printed: [], unprinted: [] });
     } finally {
       if (isAutoRefresh) setIsRefreshing(false);
@@ -228,11 +232,12 @@ const SupplierReport = () => {
 
     refreshIntervalRef.current = setInterval(async () => {
       await fetchSummary(true);
-      if (selectedSupplier) {
+      if (selectedSupplier && !editingLorryId) {
+        // Pause refresh if editing lorry
         await refreshBillDetails();
         await fetchSupplierProfile(selectedSupplier);
         await fetchLorryTransactions();
-        await fetchSupplierLoans(selectedSupplier); // Refresh loans too
+        await fetchSupplierLoans(selectedSupplier);
       }
     }, 3000);
 
@@ -248,6 +253,7 @@ const SupplierReport = () => {
     fetchSupplierProfile,
     fetchSupplierLoans,
     selectedSupplier,
+    editingLorryId,
   ]);
 
   useEffect(() => {
@@ -269,22 +275,17 @@ const SupplierReport = () => {
     let tWeight = 0,
       tPacks = 0,
       tSupplierSales = 0,
-      tPackCost = 0,
-      tComm = 0;
+      tPackCost = 0;
     const itemSummary = {};
 
     supplierDetails.forEach((record) => {
       const weight = Math.abs(parseFloat(record.weight) || 0);
-      const price = Math.abs(
-        parseFloat(record.SupplierPricePerKg) ||
-          parseFloat(record.price_per_kg) ||
-          0,
-      );
+
+      // Changed: Use price_per_kg exclusively for gross calculation matching the old system.
+      const price = Math.abs(parseFloat(record.price_per_kg) || 0);
+
       const packs = Math.abs(parseInt(record.packs) || 0);
       const packUnitCost = Math.abs(parseFloat(record.CustomerPackCost) || 0);
-      const commission = Math.abs(parseFloat(record.commission_amount) || 0);
-
-      const itemName = record.item_name || "Unknown Item";
 
       const rowGross = weight * price;
       const rowBagCost = packs * packUnitCost;
@@ -293,14 +294,17 @@ const SupplierReport = () => {
       tPacks += packs;
       tSupplierSales += rowGross;
       tPackCost += rowBagCost;
-      tComm += commission;
 
+      const itemName = record.item_name || "Unknown Item";
       if (!itemSummary[itemName]) {
         itemSummary[itemName] = { totalWeight: 0, totalPacks: 0 };
       }
       itemSummary[itemName].totalWeight += weight;
       itemSummary[itemName].totalPacks += packs;
     });
+
+    // Changed: Direct 10% commission calculation based on gross sales
+    const tComm = tSupplierSales * 0.1;
 
     return {
       totalWeight: tWeight,
@@ -311,8 +315,6 @@ const SupplierReport = () => {
       itemSummaryData: itemSummary,
     };
   }, [supplierDetails]);
-
-  // 🚀 REMOVED auto-fill for quantity, now you can type freely!
 
   const getBoxRate = (type) => {
     if (!type) return 0;
@@ -330,6 +332,7 @@ const SupplierReport = () => {
     lorryTotalRecords,
     totalLorryDeduction,
     hasLorryTransaction,
+    currentLorryTx,
   } = useMemo(() => {
     let lAmount = 0,
       nAmount = 0,
@@ -354,6 +357,7 @@ const SupplierReport = () => {
       lorryTotalRecords: currentLorryTx.length,
       totalLorryDeduction: lAmount + nAmount + bCost,
       hasLorryTransaction: currentLorryTx.length > 0,
+      currentLorryTx,
     };
   }, [lorryTransactions, selectedSupplier]);
 
@@ -370,6 +374,53 @@ const SupplierReport = () => {
     setLorryFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  // Edit Lorry Handlers
+  const handleEditLorryChange = (e) => {
+    const { name, value } = e.target;
+    setEditLorryFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const startEditingLorry = (tx) => {
+    setEditingLorryId(tx.id);
+    setEditLorryFormData(tx);
+  };
+
+  const cancelEditingLorry = () => {
+    setEditingLorryId(null);
+    setEditLorryFormData({});
+  };
+
+  const saveEditedLorry = async () => {
+    try {
+      const payload = {
+        ...editLorryFormData,
+        nattami: parseFloat(editLorryFormData.nattami) || 0,
+        lorry_amount: parseFloat(editLorryFormData.lorry_amount) || 0,
+        total_amount: parseFloat(editLorryFormData.total_amount) || 0,
+      };
+      await api.put(`/lorry-transactions/${editingLorryId}`, payload);
+      toast.success("Lorry transaction updated successfully!");
+      setEditingLorryId(null);
+      fetchLorryTransactions();
+    } catch (error) {
+      toast.error("Failed to update lorry transaction.");
+      console.error(error);
+    }
+  };
+
+  const deleteLorry = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this lorry record?"))
+      return;
+    try {
+      await api.delete(`/lorry-transactions/${id}`);
+      toast.success("Lorry transaction deleted!");
+      fetchLorryTransactions();
+    } catch (error) {
+      toast.error("Failed to delete lorry transaction.");
+      console.error(error);
+    }
+  };
+
   const handleLorrySubmit = async (e) => {
     e.preventDefault();
 
@@ -381,32 +432,33 @@ const SupplierReport = () => {
       !lorryFormData.lorry_amount ||
       !lorryFormData.nattami
     ) {
-      toast.error("කරුණාකර සියලුම දත්ත ඇතුළත් කරන්න.");
+      toast.error("Please fill all lorry details.");
       return;
     }
 
     setIsLorryLoading(true);
     try {
+      const nattamiNum = parseFloat(lorryFormData.nattami) || 0;
       await api.post("/lorry-transactions", {
         lorry_name: lorryFormData.lorry_name.trim(),
         customer_code: lorryFormData.customer_code.trim(),
-        total_amount: Math.abs(parseFloat(lorryFormData.total_amount)), // Quantity
+        total_amount: Math.abs(parseFloat(lorryFormData.total_amount) || 0),
         box_type: lorryFormData.box_type.trim(),
-        lorry_amount: Math.abs(parseFloat(lorryFormData.lorry_amount)),
-        nattami: Math.abs(parseFloat(lorryFormData.nattami)),
+        lorry_amount: Math.abs(parseFloat(lorryFormData.lorry_amount) || 0),
+        nattami: Math.abs(nattamiNum),
       });
-      toast.success("ලොරි දත්ත සාර්ථකව එකතු කරන ලදී!");
+      toast.success("Lorry added successfully!");
       setLorryFormData({
         lorry_name: "",
         customer_code: selectedSupplier || "",
-        total_amount: "", // Clears so you can type a new one
+        total_amount: "",
         box_type: "",
         lorry_amount: "",
         nattami: "",
       });
       await fetchLorryTransactions();
     } catch (error) {
-      toast.error("ලොරි දත්ත එකතු කිරීම අසාර්ථකයි.");
+      toast.error("Failed to add lorry data.");
       console.error(error);
     } finally {
       setIsLorryLoading(false);
@@ -427,7 +479,7 @@ const SupplierReport = () => {
       });
       setAdvanceStatus({
         type: "success",
-        text: `සාර්ථකයි! අත්තිකාරම් යාවත්කාලීන විය.`,
+        text: `Success! Advance updated.`,
       });
       setAdvanceAmount(
         Math.abs(parseFloat(response.data.data.advance_amount) || 0),
@@ -441,7 +493,7 @@ const SupplierReport = () => {
       console.error("Advance Update Error:", error);
       setAdvanceStatus({
         type: "error",
-        text: "යාවත්කාලීන කිරීම අසාර්ථක විය.",
+        text: "Update Failed.",
       });
     } finally {
       setAdvanceLoading(false);
@@ -691,9 +743,27 @@ const SupplierReport = () => {
       ? { backgroundColor: "#f8f9fa" }
       : { backgroundColor: "#ffffff" };
 
-  // 🚀 PRINT TEMPLATES
+  // PRINT TEMPLATES
   const getA4Content = useCallback(
-    (currentBillNo, billWidth = "101mm", topMargin = "13mm") => {
+    (
+      currentBillNo,
+      billWidth = "101mm",
+      topMargin = "13mm",
+      overrideValues = null,
+    ) => {
+      // Use override values if provided, otherwise fallback to state
+      const tSupplierSales =
+        overrideValues?.totalsupplierSales ?? totalsupplierSales;
+      const tPackCost =
+        overrideValues?.totalCustomerPackCost ?? totalCustomerPackCost;
+      const tComm = overrideValues?.totalCommission ?? totalCommission;
+      const tLorry = overrideValues?.totalLorryDeduction ?? totalLorryDeduction;
+      const tAdvance = overrideValues?.safeAdvanceAmount ?? safeAdvanceAmount;
+      const tPaid = overrideValues?.payingAmount ?? paidAmountValue;
+      const tFinal = overrideValues?.finalNetPayable ?? finalNetPayable;
+      const tBillPayable = overrideValues?.thisBillPayable ?? thisBillPayable;
+      const tTotalPacks = overrideValues?.totalPacksSum ?? totalPacksSum;
+
       const date = new Date().toLocaleDateString("si-LK");
       const time = new Date().toLocaleTimeString("en-US", {
         hour: "numeric",
@@ -701,16 +771,15 @@ const SupplierReport = () => {
         second: "2-digit",
         hour12: true,
       });
-      const mobile = "0112333375, 0777220468, 0755744447, 0715663390";
+      const mobile = "0777220468, 0715663390";
 
       const detailedItemsHtml = supplierDetails
         .map((record) => {
           const weight = Math.abs(parseFloat(record.weight) || 0);
-          const price = Math.abs(
-            parseFloat(record.SupplierPricePerKg) ||
-              parseFloat(record.price_per_kg) ||
-              0,
-          );
+
+          // Changed: Use price_per_kg exclusively here for the print bill
+          const price = Math.abs(parseFloat(record.price_per_kg) || 0);
+
           const rowTotal = weight * price;
           const itemName = record.item_name || "";
 
@@ -724,7 +793,7 @@ const SupplierReport = () => {
         })
         .join("");
 
-      // 🚀 Generate HTML for Supplier Loans to add above "ඉදිරියට ගෙනා ඉතිරිය"
+      // Generate HTML for Supplier Loans to add above "ඉදිරියට ගෙනා ඉතිරිය"
       let supplierLoansHtml = "";
       if (supplierLoans && supplierLoans.length > 0) {
         supplierLoans.forEach((loan) => {
@@ -752,11 +821,11 @@ const SupplierReport = () => {
             <!-- Header -->
             <div style="text-align: center; border-bottom: 1px solid #000; padding-bottom: 10px; margin-bottom: 10px;">
                 <h1 style="font-size: 22px; margin: 0;">
-                    <span style="border: 2px solid #000; padding: 2px 10px; margin-right: 10px;">276</span>
+                    <span style="border: 2px solid #000; padding: 2px 10px; margin-right: 10px;">N.A.276</span>
                     නිමල් අත්තනායක(පුද්) සමාගම
                 </h1>
                 <p style="font-size: 12px; margin: 5px 0 0 0;">එළවළු වැවීම, බෙදාහැරීම සහ කොමිස්පිට අලෙවි කිරීම</p>
-                <p style="font-size: 12px; margin: 2px 0;">No, 276 පෑලියගොඩ නව මැනිං වෙළඳ සංකීර්ණය</p>
+                <p style="font-size: 12px; margin: 2px 0;">අංකය 276, නව මැනිං වෙළඳ සංකීර්ණය, පෑලියගොඩ.</p>
                 <p style="font-size: 12px; margin: 2px 0;">E-mail : nimalattanayake254@gmail.com</p>
             </div>
 
@@ -794,34 +863,34 @@ const SupplierReport = () => {
 
             <!-- Calculations -->
             <div style="font-size: 14px;">
-                <div style="text-align: right; padding: 5px 0;">${formatDecimal(totalsupplierSales)}</div>
+                <div style="text-align: right; padding: 5px 0;">${formatDecimal(tSupplierSales)}</div>
                 
                 ${
-                  totalCustomerPackCost > 0
+                  tPackCost > 0
                     ? `
                 <div style="display: flex; justify-content: space-between; padding: 2px 0;">
                     <span>පෙටි/මලු කුලිය</span>
-                    <span style="text-align: right;">${formatDecimal(totalCustomerPackCost)}</span>
+                    <span style="text-align: right;">${formatDecimal(tPackCost)}</span>
                 </div>
                 <div style="border-top: 1px solid #000; border-bottom: 1px solid #000; text-align: right; padding: 2px 0; margin-bottom: 5px; font-weight: bold;">
-                    ${formatDecimal(totalsupplierSales + totalCustomerPackCost)}
+                    ${formatDecimal(tSupplierSales + tPackCost)}
                 </div>`
                     : ""
                 }
 
                 <div style="display: flex; justify-content: space-between; padding: 2px 0;">
                     <span>අඩු කලා &nbsp;&nbsp;&nbsp;: ලොරි කුලිය</span>
-                    <span style="text-align: right;">${formatDecimal(totalLorryDeduction)}</span>
+                    <span style="text-align: right;">${formatDecimal(tLorry)}</span>
                 </div>
 
                 <div style="display: flex; justify-content: space-between; padding: 2px 0;">
                     <span>අඩු කලා &nbsp;&nbsp;&nbsp;: කොමිස් අය කිරීම</span>
-                    <span style="text-align: right;">${formatDecimal(totalCommission)}</span>
+                    <span style="text-align: right;">${formatDecimal(tComm)}</span>
                 </div>
 
                 <div style="display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid #000; border-bottom: 1px solid #000; font-weight: bold; margin-top: 5px;">
                     <span>මෙම බිලට ඉතිරි (බිල් අංකය ${currentBillNo || ""} )</span>
-                    <span style="text-align: right; font-size: 16px;">${formatDecimal(thisBillPayable - totalLorryDeduction)}</span>
+                    <span style="text-align: right; font-size: 16px;">${formatDecimal(tBillPayable - tLorry)}</span>
                 </div>
 
                 <!-- 🚀 New Supplier Loans added here -->
@@ -829,15 +898,15 @@ const SupplierReport = () => {
 
                 <div style="display: flex; justify-content: space-between; padding: 5px 0;">
                     <span>ඉදිරියට ගෙනා ඉතිරිය :</span>
-                    <span style="text-align: right;">${formatDecimal(safeAdvanceAmount)}</span>
+                    <span style="text-align: right;">${formatDecimal(tAdvance)}</span>
                 </div>
 
                 ${
-                  paidAmountValue > 0
+                  tPaid > 0
                     ? `
                 <div style="display: flex; justify-content: space-between; padding: 5px 0;">
                     <span>ගෙවූ මුදල :</span>
-                    <span style="text-align: right;">${formatDecimal(paidAmountValue)}</span>
+                    <span style="text-align: right;">${formatDecimal(tPaid)}</span>
                 </div>`
                     : ""
                 }
@@ -845,9 +914,9 @@ const SupplierReport = () => {
                 <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px double #000; border-top: 1px solid #000; font-weight: bold; font-size: 18px; margin-top: 10px;">
                     <span>ඉතිරිය :</span>
                     <span style="text-align: right;">${
-                      finalNetPayable < 0
-                        ? `-${formatDecimal(finalNetPayable)}` // Display properly with negative sign if it's negative
-                        : formatDecimal(finalNetPayable)
+                      tFinal < 0
+                        ? `-${formatDecimal(Math.abs(tFinal))}`
+                        : formatDecimal(tFinal)
                     }</span>
                 </div>
             </div>
@@ -855,7 +924,7 @@ const SupplierReport = () => {
             <!-- Footer -->
             <div style="text-align: center; font-size: 11px; margin-top: 20px;">
                 මෙම කිසියම් වරදක් ඇතොත් සතියක් තුලදි දැනුම් දෙන්න<br>
-                (මලු ගණන: ${totalPacksSum})
+                (මලු ගණන: ${formatDecimal(tTotalPacks)})
             </div>
         </div>
         `;
@@ -863,45 +932,105 @@ const SupplierReport = () => {
     [
       selectedSupplier,
       supplierDetails,
-      totalPacksSum,
       totalsupplierSales,
       totalCustomerPackCost,
       totalCommission,
       totalLorryDeduction,
       safeAdvanceAmount,
-      payingAmount,
+      paidAmountValue,
       finalNetPayable,
       thisBillPayable,
+      totalPacksSum,
       supplierLoans,
     ],
   );
 
   const getBillContent = useCallback(
-    (currentBillNo) => {
-      // Fallback to Thermal format with identical layout styling adjusted for narrower width
-      return getA4Content(currentBillNo, "80mm", "0mm");
+    (currentBillNo, overrideValues = null) => {
+      return getA4Content(currentBillNo, "80mm", "0mm", overrideValues);
     },
     [getA4Content],
   );
 
+  // --- 🔥 FIXED handlePrint with live advance fetch ---
   const handlePrint = useCallback(async () => {
     if (!supplierDetails || supplierDetails.length === 0) return;
 
     if (isUnprintedBill && !hasLorryTransaction) {
-      toast.error("කරුණාකර පළමුව ලොරි දත්ත (Lorry Transaction) ඇතුළත් කරන්න!");
+      toast.error("Please add lorry details before printing!");
       return;
+    }
+
+    // --- 🔄 Fetch latest advance amount before printing ---
+    let latestAdvanceAmount = safeAdvanceAmount;
+    if (selectedSupplier) {
+      try {
+        const supRes = await api.get(
+          `/suppliers/search-by-code/${selectedSupplier}`,
+        );
+        if (supRes.data) {
+          latestAdvanceAmount = Math.abs(
+            parseFloat(supRes.data.advance_amount) || 0,
+          );
+          setAdvanceAmount(latestAdvanceAmount);
+        }
+      } catch (error) {
+        console.warn("Could not fetch latest advance amount:", error);
+      }
     }
 
     isPrintingOrUpdatingRef.current = true;
     let finalBillNo = selectedBillNo;
 
+    // --- 🔄 RECALCULATE TOTALS FROM CURRENT STATE ---
+    let tSupplierSales = 0,
+      tPackCost = 0;
+
+    supplierDetails.forEach((record) => {
+      const weight = Math.abs(parseFloat(record.weight) || 0);
+      // Changed: Calculate total sales using customer price matching exactly old bill
+      const price = Math.abs(parseFloat(record.price_per_kg) || 0);
+      const packs = Math.abs(parseInt(record.packs) || 0);
+      const packUnitCost = Math.abs(parseFloat(record.CustomerPackCost) || 0);
+
+      tSupplierSales += weight * price;
+      tPackCost += packs * packUnitCost;
+    });
+
+    // Changed: Calculate 10% commission dynamically here too
+    const tComm = tSupplierSales * 0.1;
+
+    let lAmount = 0,
+      nAmount = 0,
+      bCost = 0;
+    const currentLorryTx = lorryTransactions.filter(
+      (t) => t.customer_code === selectedSupplier,
+    );
+    currentLorryTx.forEach((t) => {
+      lAmount += Math.abs(parseFloat(t.lorry_amount) || 0);
+      nAmount += Math.abs(parseFloat(t.nattami) || 0);
+      const q = Math.abs(parseFloat(t.total_amount) || 0);
+      bCost += q * getBoxRate(t.box_type);
+    });
+    const totalLorryDeduction = lAmount + nAmount + bCost;
+
+    const latestPaidAmount = Math.abs(parseFloat(payingAmount) || 0);
+
+    const thisBillPayable = tSupplierSales + tPackCost - tComm;
+    const finalNetPayable =
+      thisBillPayable -
+      totalLorryDeduction -
+      latestAdvanceAmount -
+      latestPaidAmount;
+
+    // --- Continue with original print logic ---
     if (isUnprintedBill) {
       setIsDetailsLoading(true);
       try {
         const response = await api.post("/suppliers/mark-as-printed", {
           transaction_ids: supplierDetails.map((r) => r.id),
           telephone_no: phoneNo,
-          advance_amount: safeAdvanceAmount,
+          advance_amount: latestAdvanceAmount,
           supplier_code: selectedSupplier,
         });
 
@@ -931,7 +1060,7 @@ const SupplierReport = () => {
             telephone_no: phoneNo,
             supplier_code: selectedSupplier,
             transaction_ids: supplierDetails.map((r) => r.id),
-            advance_amount: safeAdvanceAmount,
+            advance_amount: latestAdvanceAmount,
             is_reprint: true,
           });
           setPhoneStatus("📱 SMS resent");
@@ -949,9 +1078,30 @@ const SupplierReport = () => {
     const isA4 = printFormat === "a4";
     const topMargin = "20mm";
 
+    // --- Pass freshly computed values to the template ---
     const content = isA4
-      ? getA4Content(finalBillNo, "105mm", topMargin)
-      : getBillContent(finalBillNo);
+      ? getA4Content(finalBillNo, "105mm", topMargin, {
+          totalsupplierSales: tSupplierSales,
+          totalCustomerPackCost: tPackCost,
+          totalCommission: tComm,
+          totalLorryDeduction: totalLorryDeduction,
+          safeAdvanceAmount: latestAdvanceAmount,
+          payingAmount: latestPaidAmount,
+          finalNetPayable: finalNetPayable,
+          thisBillPayable: thisBillPayable,
+          totalPacksSum: totalPacksSum,
+        })
+      : getBillContent(finalBillNo, {
+          totalsupplierSales: tSupplierSales,
+          totalCustomerPackCost: tPackCost,
+          totalCommission: tComm,
+          totalLorryDeduction: totalLorryDeduction,
+          safeAdvanceAmount: latestAdvanceAmount,
+          payingAmount: latestPaidAmount,
+          finalNetPayable: finalNetPayable,
+          thisBillPayable: thisBillPayable,
+          totalPacksSum: totalPacksSum,
+        });
 
     const iframe = document.createElement("iframe");
     iframe.style.position = "absolute";
@@ -1031,12 +1181,16 @@ const SupplierReport = () => {
     selectedBillNo,
     isUnprintedBill,
     phoneNo,
-    safeAdvanceAmount,
     selectedSupplier,
     getBillContent,
     getA4Content,
     printFormat,
     hasLorryTransaction,
+    lorryTransactions,
+    payingAmount,
+    totalPacksSum,
+    getBoxRate,
+    safeAdvanceAmount,
   ]);
 
   useEffect(() => {
@@ -1053,9 +1207,7 @@ const SupplierReport = () => {
         event.preventDefault();
 
         if (isUnprintedBill && !hasLorryTransaction) {
-          toast.error(
-            "කරුණාකර පළමුව ලොරි දත්ත (Lorry Transaction) ඇතුළත් කරන්න!",
-          );
+          toast.error("Please add lorry details before printing!");
           return;
         }
 
@@ -1131,7 +1283,7 @@ const SupplierReport = () => {
                 margin: 0,
               }}
             >
-              {supplierDocs.title} - ලේඛන පරීක්ෂාව
+              {supplierDocs.title} - Documents
             </h2>
             <button
               onClick={onClose}
@@ -1178,7 +1330,7 @@ const SupplierReport = () => {
                   textTransform: "uppercase",
                 }}
               >
-                ප්‍රධාන රූපය
+                Profile Photo
               </span>
               <div
                 style={{
@@ -1214,7 +1366,7 @@ const SupplierReport = () => {
                   textTransform: "uppercase",
                 }}
               >
-                NIC ඉදිරිපස
+                NIC Front
               </span>
               <div
                 style={{
@@ -1248,7 +1400,7 @@ const SupplierReport = () => {
                       color: "#6b7280",
                     }}
                   >
-                    ඡායාරූපයක් නොමැත
+                    No Photo Available
                   </div>
                 )}
               </div>
@@ -1270,7 +1422,7 @@ const SupplierReport = () => {
                   textTransform: "uppercase",
                 }}
               >
-                NIC පසුපස
+                NIC Back
               </span>
               <div
                 style={{
@@ -1304,7 +1456,7 @@ const SupplierReport = () => {
                       color: "#6b7280",
                     }}
                   >
-                    ඡායාරූපයක් නොමැත
+                    No Photo Available
                   </div>
                 )}
               </div>
@@ -1379,7 +1531,7 @@ const SupplierReport = () => {
               paddingBottom: "10px",
             }}
           >
-            ගනුදෙනුව වෙනස් කරන්න
+            Edit Transaction
           </h3>
 
           <div
@@ -1393,11 +1545,11 @@ const SupplierReport = () => {
             }}
           >
             <p style={{ margin: "2px 0" }}>
-              <strong>බිල් අං:</strong>{" "}
+              <strong>Bill No:</strong>{" "}
               {editingRecord.bill_no || selectedBillNo}
             </p>
             <p style={{ margin: "2px 0" }}>
-              <strong>අයිතමය:</strong> {editingRecord.item_name} |{" "}
+              <strong>Item:</strong> {editingRecord.item_name} |{" "}
               {Math.abs(editingRecord.weight)} kg
             </p>
           </div>
@@ -1429,7 +1581,7 @@ const SupplierReport = () => {
                   onChange={(e) => setApplyToAllSameItems(e.target.checked)}
                   style={{ width: "18px", height: "18px" }}
                 />
-                සියලුම "{editingRecord.item_name}" ({sameItemCount}) වෙනස් කරන්න
+                Apply to all "{editingRecord.item_name}" ({sameItemCount}) items
               </label>
             </div>
           )}
@@ -1443,7 +1595,7 @@ const SupplierReport = () => {
                 color: "#555",
               }}
             >
-              නව ගොවි කේතය (Supplier - Optional):
+              New Supplier Code (Optional):
             </label>
             <input
               type="text"
@@ -1471,7 +1623,7 @@ const SupplierReport = () => {
                 color: "#555",
               }}
             >
-              නව ගැනුම්කරු (Customer - Optional):
+              New Customer Code (Optional):
             </label>
             <input
               type="text"
@@ -1571,7 +1723,7 @@ const SupplierReport = () => {
     if (items.length === 0)
       return (
         <p style={{ color: "#6c757d", padding: "10px" }}>
-          {searchTerm ? `No results found` : "මෙම ප්‍රවර්ගයේ සැපයුම්කරු නොමැත"}
+          {searchTerm ? `No results found` : "No Suppliers found"}
         </p>
       );
 
@@ -1655,42 +1807,62 @@ const SupplierReport = () => {
 
     const renderDataRows = () => (
       <tbody>
-        {supplierDetails.map((record, index) => (
-          <tr
-            key={record.id || index}
-            style={{ ...getRowStyle(index), cursor: "pointer" }}
-            onClick={() => setEditingRecord(record)}
-          >
-            <td style={tdStyle}>{record.bill_no || selectedBillNo}</td>
-            <td style={tdStyle}>{record.customer_code}</td>
-            <td style={tdStyle}>
-              <strong>{record.item_name}</strong>
-            </td>
-            <td style={tdStyle}>{Math.abs(record.packs || 0)}</td>
-            <td style={tdStyle}>{Math.abs(record.weight || 0)}</td>
-            <td style={tdStyle}>{formatDecimal(record.price_per_kg)}</td>
-            <td style={tdStyle}>{formatDecimal(record.SupplierPricePerKg)}</td>
-            <td style={tdStyle}>
-              {formatDecimal(
-                Math.abs(
-                  (record?.total || 0) - (record?.CustomerPackLabour || 0),
-                ),
-              )}
-            </td>
-            <td style={tdStyle}>{formatDecimal(record.SupplierTotal)}</td>
-            <td style={tdStyle}>{formatDecimal(record.commission_amount)}</td>
-            <td style={tdStyle}>{formatDecimal(record.CustomerPackCost)}</td>
-          </tr>
-        ))}
+        {supplierDetails.map((record, index) => {
+          const weight = Math.abs(parseFloat(record.weight) || 0);
+
+          // Changed: Display Customer price accurately
+          const price = Math.abs(parseFloat(record.price_per_kg) || 0);
+
+          // Changed: Row level calculations to reflect the actual bill totals being displayed
+          const rowGross = weight * price;
+          const rowComm = rowGross * 0.1;
+
+          return (
+            <tr
+              key={record.id || index}
+              style={{ ...getRowStyle(index), cursor: "pointer" }}
+              onClick={() => setEditingRecord(record)}
+            >
+              <td style={tdStyle}>{record.bill_no || selectedBillNo}</td>
+              <td style={tdStyle}>{record.customer_code}</td>
+              <td style={tdStyle}>
+                <strong>{record.item_name}</strong>
+              </td>
+              <td style={tdStyle}>{Math.abs(parseInt(record.packs) || 0)}</td>
+              <td style={tdStyle}>{weight}</td>
+              <td style={tdStyle}>{formatDecimal(price)}</td>
+              <td style={tdStyle}>
+                {formatDecimal(record.SupplierPricePerKg)}
+              </td>
+              <td style={tdStyle}>
+                {formatDecimal(
+                  Math.abs(
+                    (record?.total || 0) - (record?.CustomerPackLabour || 0),
+                  ),
+                )}
+              </td>
+              {/* Changed: Override Sup Total output with correctly calculated gross value */}
+              <td style={tdStyle}>{formatDecimal(rowGross)}</td>
+              {/* Changed: Override Commission output with calculated 10% row commission */}
+              <td style={tdStyle}>{formatDecimal(rowComm)}</td>
+              <td style={tdStyle}>{formatDecimal(record.CustomerPackCost)}</td>
+            </tr>
+          );
+        })}
       </tbody>
     );
+
+    const getRowStyle = (index) =>
+      index % 2 === 0
+        ? { backgroundColor: "#f8f9fa" }
+        : { backgroundColor: "#ffffff" };
 
     return (
       <div style={panelContainerStyle}>
         <div style={headerStyle}>
           <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
             <h2 style={{ fontSize: "1.5rem", color: "white", margin: 0 }}>
-              ගනුදෙනු විස්තර (බිල් අංකය:{" "}
+              Transaction Details (Bill No:{" "}
               <strong>{selectedBillNo || "N/A"}</strong>)
             </h2>
 
@@ -1700,7 +1872,7 @@ const SupplierReport = () => {
               >
                 <input
                   type="text"
-                  placeholder="දුරකථන අංකය..."
+                  placeholder="Phone No..."
                   value={phoneNo}
                   onChange={(e) => {
                     setPhoneNo(e.target.value);
@@ -1780,17 +1952,17 @@ const SupplierReport = () => {
           >
             <thead>
               <tr>
-                <th style={thStyle}>බිල් අං:</th>
-                <th style={thStyle}>ගනුදෙ</th>
-                <th style={thStyle}>අයිත</th>
-                <th style={thStyle}>අසුරුම්</th>
-                <th style={thStyle}>බර</th>
-                <th style={thStyle}>ගනුදෙ මිල</th>
-                <th style={thStyle}>සැපයුම් මිල</th>
-                <th style={thStyle}>ගනුදෙ එක</th>
-                <th style={thStyle}>සැපයුම් එක</th>
-                <th style={thStyle}>කොමි</th>
-                <th style={thStyle}>මලු විය</th>
+                <th style={thStyle}>Bill No:</th>
+                <th style={thStyle}>Customer</th>
+                <th style={thStyle}>Item</th>
+                <th style={thStyle}>Packs</th>
+                <th style={thStyle}>Weight</th>
+                <th style={thStyle}>Cust Price</th>
+                <th style={thStyle}>Sup Price</th>
+                <th style={thStyle}>Cust Total</th>
+                <th style={thStyle}>Sup Total</th>
+                <th style={thStyle}>Comm</th>
+                <th style={thStyle}>Pack Cost</th>
               </tr>
             </thead>
             {selectedSupplier && supplierDetails.length > 0 ? (
@@ -1835,25 +2007,25 @@ const SupplierReport = () => {
                 }}
               >
                 <div style={{ color: "white" }}>
-                  එකතුව :{" "}
+                  Total :{" "}
                   <span style={{ color: "#FF5252", marginLeft: "5px" }}>
                     {formatDecimal(totalsupplierSales)}
                   </span>
                 </div>
                 <div style={{ color: "white" }}>
-                  මලු අගය :{" "}
+                  Pack Cost :{" "}
                   <span style={{ color: "#FF5252", marginLeft: "5px" }}>
                     {formatDecimal(totalCustomerPackCost)}
                   </span>
                 </div>
                 <div style={{ color: "white" }}>
-                  කොමිස් එකතුව :{" "}
+                  Commission Total :{" "}
                   <span style={{ color: "white", marginLeft: "5px" }}>
                     {formatDecimal(totalCommission)}
                   </span>
                 </div>
                 <div style={{ color: "white" }}>
-                  ගෙවිය යුතු මුදල :{" "}
+                  Payable Amount :{" "}
                   <span style={{ color: "#FF5252", marginLeft: "5px" }}>
                     {formatDecimal(
                       totalsupplierSales +
@@ -1874,19 +2046,19 @@ const SupplierReport = () => {
                 }}
               >
                 <div style={{ color: "white" }}>
-                  ලොරි කුලිය / නාට්ටාමි :{" "}
+                  Lorry / Nattami :{" "}
                   <span style={{ color: "#FF5252", marginLeft: "5px" }}>
                     {formatDecimal(totalLorryDeduction)}
                   </span>
                 </div>
                 <div style={{ color: "white" }}>
-                  ඉදිරියට ගෙන ආ ශේෂය :{" "}
+                  Forward Balance :{" "}
                   <span style={{ color: "#FFEB3B", marginLeft: "5px" }}>
                     {formatDecimal(advanceAmount)}
                   </span>
                 </div>
                 <div style={{ color: "white" }}>
-                  අද දිනට ගෙවිය යුතු මුදල :{" "}
+                  Net Payable Today :{" "}
                   <span
                     style={{
                       color: "#FFEB3B",
@@ -1895,7 +2067,7 @@ const SupplierReport = () => {
                     }}
                   >
                     {finalNetPayable < 0
-                      ? `-${formatDecimal(finalNetPayable)}`
+                      ? `-${formatDecimal(Math.abs(finalNetPayable))}`
                       : formatDecimal(finalNetPayable)}
                   </span>
                 </div>
@@ -1916,13 +2088,13 @@ const SupplierReport = () => {
               <thead>
                 <tr>
                   <th style={{ ...thStyle, backgroundColor: "#6c757d" }}>
-                    අයිතමය නම
+                    Item Name
                   </th>
                   <th style={{ ...thStyle, backgroundColor: "#6c757d" }}>
-                    සම්පූර්ණ බර
+                    Total Weight
                   </th>
                   <th style={{ ...thStyle, backgroundColor: "#6c757d" }}>
-                    මුළු අසුරුම්
+                    Total Packs
                   </th>
                 </tr>
               </thead>
@@ -1959,7 +2131,7 @@ const SupplierReport = () => {
                     marginBottom: "15px",
                   }}
                 >
-                  🚛 ලොරි දත්ත එකතු කරන්න (Add Lorry)
+                  🚛 Add Lorry
                 </h3>
 
                 <div
@@ -2126,7 +2298,7 @@ const SupplierReport = () => {
                         marginBottom: "5px",
                       }}
                     >
-                      Customer Code *
+                      Supplier Code *
                     </label>
                     <input
                       type="text"
@@ -2154,7 +2326,7 @@ const SupplierReport = () => {
                         marginBottom: "5px",
                       }}
                     >
-                      ප්‍රමාණය (Quantity) *
+                      Quantity *
                     </label>
                     <input
                       type="number"
@@ -2201,15 +2373,15 @@ const SupplierReport = () => {
                       required
                     >
                       <option value="">-- Box Type --</option>
-                      <option value="BAG">BAG - බෑග් (Rs 40)</option>
-                      <option value="CARD">CARD - කාඩ් බෝඩ් (Rs 40)</option>
-                      <option value="LEEP">LEEP - ලී පෙට්ටි (Rs 30)</option>
-                      <option value="TAKB">TAKB - තක්කාලි කා.බෝ (Rs 30)</option>
+                      <option value="BAG">BAG - Bags (Rs 40)</option>
+                      <option value="CARD">CARD - Card Board (Rs 40)</option>
+                      <option value="LEEP">LEEP - Wood Box (Rs 30)</option>
+                      <option value="TAKB">TAKB - Tomato C.B (Rs 30)</option>
                       <option value="TK">
-                        TK - ට්‍රේ ප්ලාස්ටික් කුඩා (Rs 40)
+                        TK - Tray Plastic Small (Rs 40)
                       </option>
                       <option value="TL">
-                        TL - ට්‍රේ ප්ලාස්ටික් ලොකු (Rs 50)
+                        TL - Tray Plastic Large (Rs 50)
                       </option>
                     </select>
                   </div>
@@ -2254,8 +2426,7 @@ const SupplierReport = () => {
                       Nattami *
                     </label>
                     <input
-                      type="number"
-                      step="0.01"
+                      type="text"
                       name="nattami"
                       value={lorryFormData.nattami}
                       onChange={handleLorryChange}
@@ -2296,6 +2467,252 @@ const SupplierReport = () => {
                     </button>
                   </div>
                 </form>
+
+                {/* Added Lorry Data Table (View / Edit / Delete) */}
+                {currentLorryTx.length > 0 && (
+                  <div style={{ marginTop: "25px" }}>
+                    <h4
+                      style={{
+                        color: "#3498db",
+                        fontSize: "1rem",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      Added Lorry Records
+                    </h4>
+                    <table
+                      style={{
+                        width: "100%",
+                        borderCollapse: "collapse",
+                        color: "white",
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      <thead>
+                        <tr
+                          style={{
+                            backgroundColor: "#3498db33",
+                            borderBottom: "1px solid #3498db",
+                          }}
+                        >
+                          <th style={{ padding: "8px", textAlign: "left" }}>
+                            Lorry Name
+                          </th>
+                          <th style={{ padding: "8px", textAlign: "right" }}>
+                            Quantity
+                          </th>
+                          <th style={{ padding: "8px", textAlign: "left" }}>
+                            Box Type
+                          </th>
+                          <th style={{ padding: "8px", textAlign: "right" }}>
+                            Lorry Amt
+                          </th>
+                          <th style={{ padding: "8px", textAlign: "right" }}>
+                            Nattami
+                          </th>
+                          <th style={{ padding: "8px", textAlign: "center" }}>
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentLorryTx.map((tx) => (
+                          <tr
+                            key={tx.id}
+                            style={{ borderBottom: "1px solid #ffffff22" }}
+                          >
+                            {editingLorryId === tx.id ? (
+                              <>
+                                <td style={{ padding: "8px" }}>
+                                  <input
+                                    type="text"
+                                    name="lorry_name"
+                                    value={editLorryFormData.lorry_name}
+                                    onChange={handleEditLorryChange}
+                                    style={{
+                                      width: "100%",
+                                      padding: "4px",
+                                      borderRadius: "4px",
+                                      border: "1px solid #ccc",
+                                      color: "black",
+                                      fontSize: "0.9rem",
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: "8px" }}>
+                                  <input
+                                    type="number"
+                                    name="total_amount"
+                                    value={editLorryFormData.total_amount}
+                                    onChange={handleEditLorryChange}
+                                    style={{
+                                      width: "100%",
+                                      padding: "4px",
+                                      borderRadius: "4px",
+                                      border: "1px solid #ccc",
+                                      color: "black",
+                                      fontSize: "0.9rem",
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: "8px" }}>
+                                  <select
+                                    name="box_type"
+                                    value={editLorryFormData.box_type}
+                                    onChange={handleEditLorryChange}
+                                    style={{
+                                      width: "100%",
+                                      padding: "4px",
+                                      borderRadius: "4px",
+                                      border: "1px solid #ccc",
+                                      color: "black",
+                                      fontSize: "0.9rem",
+                                    }}
+                                  >
+                                    <option value="BAG">BAG (Rs 40)</option>
+                                    <option value="CARD">CARD (Rs 40)</option>
+                                    <option value="LEEP">LEEP (Rs 30)</option>
+                                    <option value="TAKB">TAKB (Rs 30)</option>
+                                    <option value="TK">TK (Rs 40)</option>
+                                    <option value="TL">TL (Rs 50)</option>
+                                  </select>
+                                </td>
+                                <td style={{ padding: "8px" }}>
+                                  <input
+                                    type="number"
+                                    name="lorry_amount"
+                                    value={editLorryFormData.lorry_amount}
+                                    onChange={handleEditLorryChange}
+                                    style={{
+                                      width: "100%",
+                                      padding: "4px",
+                                      borderRadius: "4px",
+                                      border: "1px solid #ccc",
+                                      color: "black",
+                                      fontSize: "0.9rem",
+                                    }}
+                                  />
+                                </td>
+                                <td style={{ padding: "8px" }}>
+                                  <input
+                                    type="text"
+                                    name="nattami"
+                                    value={editLorryFormData.nattami}
+                                    onChange={handleEditLorryChange}
+                                    style={{
+                                      width: "100%",
+                                      padding: "4px",
+                                      borderRadius: "4px",
+                                      border: "1px solid #ccc",
+                                      color: "black",
+                                      fontSize: "0.9rem",
+                                    }}
+                                  />
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "8px",
+                                    textAlign: "center",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  <button
+                                    onClick={saveEditedLorry}
+                                    style={{
+                                      background: "#2ecc71",
+                                      color: "white",
+                                      border: "none",
+                                      padding: "4px 8px",
+                                      borderRadius: "4px",
+                                      cursor: "pointer",
+                                      marginRight: "5px",
+                                      fontSize: "12px",
+                                      fontWeight: "bold",
+                                    }}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={cancelEditingLorry}
+                                    style={{
+                                      background: "#e74c3c",
+                                      color: "white",
+                                      border: "none",
+                                      padding: "4px 8px",
+                                      borderRadius: "4px",
+                                      cursor: "pointer",
+                                      fontSize: "12px",
+                                      fontWeight: "bold",
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td style={{ padding: "8px" }}>
+                                  {tx.lorry_name}
+                                </td>
+                                <td
+                                  style={{ padding: "8px", textAlign: "right" }}
+                                >
+                                  {formatDecimal(tx.total_amount, 0)}
+                                </td>
+                                <td style={{ padding: "8px" }}>
+                                  {tx.box_type}
+                                </td>
+                                <td
+                                  style={{ padding: "8px", textAlign: "right" }}
+                                >
+                                  {formatDecimal(tx.lorry_amount)}
+                                </td>
+                                <td
+                                  style={{ padding: "8px", textAlign: "right" }}
+                                >
+                                  {tx.nattami}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "8px",
+                                    textAlign: "center",
+                                  }}
+                                >
+                                  <button
+                                    onClick={() => startEditingLorry(tx)}
+                                    style={{
+                                      background: "transparent",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      fontSize: "16px",
+                                      marginRight: "10px",
+                                    }}
+                                    title="Edit"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    onClick={() => deleteLorry(tx.id)}
+                                    style={{
+                                      background: "transparent",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      fontSize: "16px",
+                                      marginRight: "10px",
+                                    }}
+                                    title="Delete"
+                                  >
+                                    🗑️
+                                  </button>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2311,7 +2728,7 @@ const SupplierReport = () => {
               <h3
                 style={{ color: "#ffc107", marginTop: 0, fontSize: "1.2rem" }}
               >
-                අත්තිකාරම් ඇතුලත් කරන්න (Advance Entry)
+                Advance Entry
               </h3>
               <form
                 onSubmit={handleAdvanceSubmit}
@@ -2351,7 +2768,7 @@ const SupplierReport = () => {
                       marginBottom: "5px",
                     }}
                   >
-                    Amount (රු:)
+                    Amount (Rs)
                   </label>
                   <input
                     type="number"
@@ -2422,7 +2839,7 @@ const SupplierReport = () => {
                   marginBottom: "8px",
                 }}
               >
-                ගෙවන මුදල ඇතුලත් කර Print කරන්න (Enter Paying Amount & Enter):
+                Enter Paying Amount & Hit Enter:
               </label>
               <input
                 type="number"
@@ -2461,9 +2878,7 @@ const SupplierReport = () => {
             }}
             onClick={() => {
               if (isUnprintedBill && !hasLorryTransaction) {
-                toast.error(
-                  "කරුණාකර පළමුව ලොරි දත්ත (Lorry Transaction) ඇතුළත් කරන්න!",
-                );
+                toast.error("Please add lorry details before printing!");
                 return;
               }
               handlePrint();
@@ -2518,7 +2933,7 @@ const SupplierReport = () => {
       <Toaster position="top-right" />
       <nav style={navBarStyle}>
         <h1 style={{ color: "white", fontSize: "1.5rem", margin: 0 }}>
-          සැපයුම්කරු වාර්තාව
+          Supplier Report
         </h1>
         <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
           <div
@@ -2599,7 +3014,7 @@ const SupplierReport = () => {
             }}
             onClick={() => navigate("/suppliers/printed-report")}
           >
-            සැපයුම්කරු ණය
+            Supplier Loans
           </button>
           <button
             style={{
@@ -2614,7 +3029,7 @@ const SupplierReport = () => {
             }}
             onClick={goToSalesEntry}
           >
-            මුල් පිටුව
+            Home
           </button>
         </div>
       </nav>
@@ -2631,11 +3046,11 @@ const SupplierReport = () => {
                 }}
               >
                 {" "}
-                මුද්‍රණය කළ{" "}
+                Printed{" "}
               </h2>
               <input
                 type="text"
-                placeholder="🔍 මුද්‍රිත සෙවීම..."
+                placeholder="🔍 Search printed..."
                 value={printedSearchTerm}
                 onChange={(e) => setPrintedSearchTerm(e.target.value)}
                 style={{
@@ -2665,11 +3080,11 @@ const SupplierReport = () => {
                   whiteSpace: "nowrap",
                 }}
               >
-                මුද්‍රණය නොකළ
+                Unprinted
               </h2>
               <input
                 type="text"
-                placeholder="🔍 මුද්‍රණ නොකළ සෙවීම..."
+                placeholder="🔍 Search unprinted..."
                 value={unprintedSearchTerm}
                 onChange={(e) => setUnprintedSearchTerm(e.target.value)}
                 style={{

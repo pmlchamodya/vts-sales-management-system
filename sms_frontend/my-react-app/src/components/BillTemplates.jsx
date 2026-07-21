@@ -142,7 +142,7 @@ export const ThermalBillHTML = ({
             <!-- Header Row -->
             <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 5px;">
                 <div style="border: 2px solid #000; font-size: 26px; font-weight: bold; padding: 2px 10px; margin-right: 10px;">
-                    276
+                    N.A.276
                 </div>
                 <div style="font-size: 20px; font-weight: bold;">
                     නිමල් අත්තනායක(පුද්) සමාගම
@@ -152,8 +152,8 @@ export const ThermalBillHTML = ({
             <!-- Address/Info -->
             <div style="text-align: center; font-size: 11px; font-weight: bold; line-height: 1.4;">
                 එළවළු, පළතුරු හා චයිනීස් එළවළු ගෙන්වන්නෝ හා බෙදා හරින්නෝ<br>
-                No, 276 පෑලියගොඩ නව මැනිං වෙළද සංකීර්ණය<br>
-                දුර : 0112333375, 0777220468
+                අංක 276, නව මැනිං වෙළඳ සංකීර්ණය, පෑලියගොඩ.<br>
+                දුර : 0777220468, 0715663390
             </div>
 
             <!-- Date, Bill, Customer -->
