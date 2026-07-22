@@ -4,7 +4,7 @@ import CreatableSelect from "react-select/creatable";
 import api from "../../api";
 import Sidebar from "../Sidebar";
 import LoanBreakdownModal from "./LoanBreakdownModal";
-// අලුත් Farmer Breakdown Modal එක Import කිරීම
+// Import the new Farmer Breakdown Modal
 import FarmerBreakdownModal from "./FarmerBreakdownModal";
 
 const formatCustomerOptions = (customers) =>
@@ -566,28 +566,41 @@ const LoanManager = () => {
                 <div className="row gx-2 mt-2 w-100 m-0 p-0">
                   <div className={`col-md-${isIncomeOrExpense ? 8 : 5}`}>
                     <label className="text-form-label">විස්තරය</label>
-                    <CreatableSelect
-                      options={isExpense ? expenseOptions : []}
-                      onChange={handleDescriptionChange}
-                      onCreateOption={(inputValue) => {
-                        setForm((prev) => ({
-                          ...prev,
-                          description: inputValue,
-                        }));
-                      }}
-                      value={
-                        (isExpense &&
+                    {isExpense ? (
+                      <CreatableSelect
+                        options={expenseOptions}
+                        onChange={handleDescriptionChange}
+                        onCreateOption={(inputValue) => {
+                          setForm((prev) => ({
+                            ...prev,
+                            description: inputValue,
+                          }));
+                        }}
+                        value={
                           expenseOptions.find(
                             (opt) => opt.label === form.description,
-                          )) ||
-                        (form.description
-                          ? { value: form.description, label: form.description }
-                          : null)
-                      }
-                      placeholder="Type or select..."
-                      isClearable
-                      styles={selectStyles}
-                    />
+                          ) ||
+                          (form.description
+                            ? {
+                                value: form.description,
+                                label: form.description,
+                              }
+                            : null)
+                        }
+                        placeholder="Type or select..."
+                        isClearable
+                        styles={selectStyles}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        name="description"
+                        value={form.description}
+                        onChange={handleInputChange}
+                        placeholder="විස්තරය ඇතුලත් කරන්න"
+                      />
+                    )}
                     {isCustomerRelated && (
                       <span className="text-white-50 small fw-bold mt-1 d-block">
                         {totalLoanDisplay}
