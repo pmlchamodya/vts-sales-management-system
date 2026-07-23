@@ -183,9 +183,7 @@ const SupplierReport = () => {
           `/suppliers/search-by-code/${supplierCode}`,
         );
         if (supRes.data) {
-          setAdvanceAmount(
-            Math.abs(parseFloat(supRes.data.advance_amount) || 0),
-          );
+          setAdvanceAmount(parseFloat(supRes.data.advance_amount) || 0);
           setProfilePic(supRes.data.profile_pic);
 
           if (!isPhoneManuallyChanged) {
@@ -233,7 +231,6 @@ const SupplierReport = () => {
     refreshIntervalRef.current = setInterval(async () => {
       await fetchSummary(true);
       if (selectedSupplier && !editingLorryId) {
-        // Pause refresh if editing lorry
         await refreshBillDetails();
         await fetchSupplierProfile(selectedSupplier);
         await fetchLorryTransactions();
@@ -280,10 +277,7 @@ const SupplierReport = () => {
 
     supplierDetails.forEach((record) => {
       const weight = Math.abs(parseFloat(record.weight) || 0);
-
-      // Changed: Use price_per_kg exclusively for gross calculation matching the old system.
       const price = Math.abs(parseFloat(record.price_per_kg) || 0);
-
       const packs = Math.abs(parseInt(record.packs) || 0);
       const packUnitCost = Math.abs(parseFloat(record.CustomerPackCost) || 0);
 
@@ -303,7 +297,6 @@ const SupplierReport = () => {
       itemSummary[itemName].totalPacks += packs;
     });
 
-    // Changed: Direct 10% commission calculation based on gross sales
     const tComm = tSupplierSales * 0.1;
 
     return {
@@ -362,19 +355,20 @@ const SupplierReport = () => {
   }, [lorryTransactions, selectedSupplier]);
 
   const paidAmountValue = Math.abs(parseFloat(payingAmount) || 0);
-  const safeAdvanceAmount = Math.abs(parseFloat(advanceAmount) || 0);
+
+  const safeAdvanceAmount = parseFloat(advanceAmount) || 0;
 
   const thisBillPayable =
     totalsupplierSales + totalCustomerPackCost - totalCommission;
+
   const finalNetPayable =
-    thisBillPayable - totalLorryDeduction - safeAdvanceAmount - paidAmountValue;
+    thisBillPayable - totalLorryDeduction + safeAdvanceAmount - paidAmountValue;
 
   const handleLorryChange = (e) => {
     const { name, value } = e.target;
     setLorryFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Edit Lorry Handlers
   const handleEditLorryChange = (e) => {
     const { name, value } = e.target;
     setEditLorryFormData((prev) => ({ ...prev, [name]: value }));
@@ -475,15 +469,13 @@ const SupplierReport = () => {
     try {
       const response = await api.post("/suppliers/advance", {
         ...advancePayload,
-        advance_amount: Math.abs(parseFloat(advancePayload.advance_amount)),
+        advance_amount: parseFloat(advancePayload.advance_amount),
       });
       setAdvanceStatus({
         type: "success",
         text: `Success! Advance updated.`,
       });
-      setAdvanceAmount(
-        Math.abs(parseFloat(response.data.data.advance_amount) || 0),
-      );
+      setAdvanceAmount(parseFloat(response.data.data.advance_amount) || 0);
       setAdvancePayload({ ...advancePayload, advance_amount: "" });
       await fetchSummary();
       if (selectedSupplier) {
@@ -597,7 +589,7 @@ const SupplierReport = () => {
     try {
       const supRes = await api.get(`/suppliers/search-by-code/${supplierCode}`);
       if (supRes.data) {
-        setAdvanceAmount(Math.abs(parseFloat(supRes.data.advance_amount) || 0));
+        setAdvanceAmount(parseFloat(supRes.data.advance_amount) || 0);
         setProfilePic(supRes.data.profile_pic);
         setPhoneNo(supRes.data.telephone_no || "");
 
@@ -654,7 +646,7 @@ const SupplierReport = () => {
     try {
       const supRes = await api.get(`/suppliers/search-by-code/${supplierCode}`);
       if (supRes.data) {
-        setAdvanceAmount(Math.abs(parseFloat(supRes.data.advance_amount) || 0));
+        setAdvanceAmount(parseFloat(supRes.data.advance_amount) || 0);
         setProfilePic(supRes.data.profile_pic);
         setPhoneNo(supRes.data.telephone_no || "");
 
@@ -720,6 +712,17 @@ const SupplierReport = () => {
           bill_no: selectedBillNo || null,
         });
 
+        // --- NEW CODE: Update Ledger When Money is Paid Manually ---
+        await api.post("/customers-loans", {
+          loan_type: "supplier_repayment",
+          supplier_code: selectedSupplier,
+          amount: paidAmountValue,
+          description: `මුදල් ගෙවීම (බිල් ${selectedBillNo || ""})`,
+          bill_no: selectedBillNo || "",
+          settling_way: "cash",
+        });
+        // -----------------------------------------------------------
+
         setLoanStatus("✅ Loan saved");
         setPayingAmount("");
 
@@ -751,7 +754,6 @@ const SupplierReport = () => {
       topMargin = "13mm",
       overrideValues = null,
     ) => {
-      // Use override values if provided, otherwise fallback to state
       const tSupplierSales =
         overrideValues?.totalsupplierSales ?? totalsupplierSales;
       const tPackCost =
@@ -776,10 +778,7 @@ const SupplierReport = () => {
       const detailedItemsHtml = supplierDetails
         .map((record) => {
           const weight = Math.abs(parseFloat(record.weight) || 0);
-
-          // Changed: Use price_per_kg exclusively here for the print bill
           const price = Math.abs(parseFloat(record.price_per_kg) || 0);
-
           const rowTotal = weight * price;
           const itemName = record.item_name || "";
 
@@ -793,26 +792,28 @@ const SupplierReport = () => {
         })
         .join("");
 
-      // Generate HTML for Supplier Loans to add above "ඉදිරියට ගෙනා ඉතිරිය"
+      // Formatting Loans Below the advance text in brackets (SHOW ONLY THE LATEST UPDATE)
       let supplierLoansHtml = "";
       if (supplierLoans && supplierLoans.length > 0) {
-        supplierLoans.forEach((loan) => {
-          if (loan.loan_type === "supplier_repayment") {
-            supplierLoansHtml += `
-                    <div style="display: flex; justify-content: space-between; padding: 2px 0; color: #555;">
-                        <span>ගොවියන්ගේ ණය පියවීම (-) [${loan.description || ""}]</span>
-                        <span style="text-align: right;">-${formatDecimal(loan.amount)}</span>
-                    </div>
-                  `;
-          } else if (loan.loan_type === "supplier_sale") {
-            supplierLoansHtml += `
-                    <div style="display: flex; justify-content: space-between; padding: 2px 0; color: #555;">
-                        <span>ගොවියන්ගේ එළවළු විකුණුම (+) [${loan.description || ""}]</span>
-                        <span style="text-align: right;">+${formatDecimal(loan.amount)}</span>
-                    </div>
-                  `;
-          }
-        });
+        // Find the most recent loan by getting the one with the highest ID
+        const latestLoan = supplierLoans.reduce((prev, current) =>
+          prev.id > current.id ? prev : current,
+        );
+
+        const lDate = latestLoan.date || date;
+        const typeSign =
+          latestLoan.loan_type === "supplier_repayment" ? "-" : "+";
+        const desc =
+          latestLoan.description ||
+          (latestLoan.loan_type === "supplier_repayment"
+            ? "ණය පියවීම"
+            : "විකුණුම");
+
+        supplierLoansHtml = `
+            <div style="font-size: 12px; color: #555; padding-top: 2px; font-weight: normal;">
+                (${lDate} / ${desc} / ${typeSign}${formatDecimal(latestLoan.amount)})
+            </div>
+        `;
       }
 
       return `
@@ -871,9 +872,6 @@ const SupplierReport = () => {
                 <div style="display: flex; justify-content: space-between; padding: 2px 0;">
                     <span>පෙටි/මලු කුලිය</span>
                     <span style="text-align: right;">${formatDecimal(tPackCost)}</span>
-                </div>
-                <div style="border-top: 1px solid #000; border-bottom: 1px solid #000; text-align: right; padding: 2px 0; margin-bottom: 5px; font-weight: bold;">
-                    ${formatDecimal(tSupplierSales + tPackCost)}
                 </div>`
                     : ""
                 }
@@ -893,12 +891,12 @@ const SupplierReport = () => {
                     <span style="text-align: right; font-size: 16px;">${formatDecimal(tBillPayable - tLorry)}</span>
                 </div>
 
-                <!-- 🚀 New Supplier Loans added here -->
-                ${supplierLoansHtml}
-
                 <div style="display: flex; justify-content: space-between; padding: 5px 0;">
-                    <span>ඉදිරියට ගෙනා ඉතිරිය :</span>
-                    <span style="text-align: right;">${formatDecimal(tAdvance)}</span>
+                    <div>
+                        <div>ඉදිරියට ගෙනා ඉතිරිය :</div>
+                        ${supplierLoansHtml}
+                    </div>
+                    <div style="text-align: right;">${tAdvance < 0 ? `-${formatDecimal(Math.abs(tAdvance))}` : formatDecimal(tAdvance)}</div>
                 </div>
 
                 ${
@@ -952,7 +950,6 @@ const SupplierReport = () => {
     [getA4Content],
   );
 
-  // --- 🔥 FIXED handlePrint with live advance fetch ---
   const handlePrint = useCallback(async () => {
     if (!supplierDetails || supplierDetails.length === 0) return;
 
@@ -961,7 +958,6 @@ const SupplierReport = () => {
       return;
     }
 
-    // --- 🔄 Fetch latest advance amount before printing ---
     let latestAdvanceAmount = safeAdvanceAmount;
     if (selectedSupplier) {
       try {
@@ -969,9 +965,7 @@ const SupplierReport = () => {
           `/suppliers/search-by-code/${selectedSupplier}`,
         );
         if (supRes.data) {
-          latestAdvanceAmount = Math.abs(
-            parseFloat(supRes.data.advance_amount) || 0,
-          );
+          latestAdvanceAmount = parseFloat(supRes.data.advance_amount) || 0;
           setAdvanceAmount(latestAdvanceAmount);
         }
       } catch (error) {
@@ -982,13 +976,11 @@ const SupplierReport = () => {
     isPrintingOrUpdatingRef.current = true;
     let finalBillNo = selectedBillNo;
 
-    // --- 🔄 RECALCULATE TOTALS FROM CURRENT STATE ---
     let tSupplierSales = 0,
       tPackCost = 0;
 
     supplierDetails.forEach((record) => {
       const weight = Math.abs(parseFloat(record.weight) || 0);
-      // Changed: Calculate total sales using customer price matching exactly old bill
       const price = Math.abs(parseFloat(record.price_per_kg) || 0);
       const packs = Math.abs(parseInt(record.packs) || 0);
       const packUnitCost = Math.abs(parseFloat(record.CustomerPackCost) || 0);
@@ -997,7 +989,6 @@ const SupplierReport = () => {
       tPackCost += packs * packUnitCost;
     });
 
-    // Changed: Calculate 10% commission dynamically here too
     const tComm = tSupplierSales * 0.1;
 
     let lAmount = 0,
@@ -1017,9 +1008,10 @@ const SupplierReport = () => {
     const latestPaidAmount = Math.abs(parseFloat(payingAmount) || 0);
 
     const thisBillPayable = tSupplierSales + tPackCost - tComm;
+
     const finalNetPayable =
       thisBillPayable -
-      totalLorryDeduction -
+      totalLorryDeduction +
       latestAdvanceAmount -
       latestPaidAmount;
 
@@ -1036,6 +1028,26 @@ const SupplierReport = () => {
 
         finalBillNo = response.data.new_bill_no;
         setSelectedBillNo(finalBillNo);
+
+        // --- NEW CODE: Record the bill total as a ledger entry automatically ---
+        // This makes sure the Database Balance (advance_amount) updates permanently!
+        const billNetAmount = thisBillPayable - totalLorryDeduction;
+        if (billNetAmount !== 0) {
+          try {
+            await api.post("/customers-loans", {
+              loan_type:
+                billNetAmount > 0 ? "supplier_sale" : "supplier_repayment",
+              supplier_code: selectedSupplier,
+              amount: Math.abs(billNetAmount),
+              description: `බිල් අංක ${finalBillNo}`,
+              bill_no: finalBillNo,
+              settling_way: "cash",
+            });
+          } catch (loanErr) {
+            console.error("Failed to update ledger balance", loanErr);
+          }
+        }
+        // -----------------------------------------------------------------------
 
         if (phoneNo) {
           console.log(
@@ -1078,7 +1090,6 @@ const SupplierReport = () => {
     const isA4 = printFormat === "a4";
     const topMargin = "20mm";
 
-    // --- Pass freshly computed values to the template ---
     const content = isA4
       ? getA4Content(finalBillNo, "105mm", topMargin, {
           totalsupplierSales: tSupplierSales,
@@ -1809,11 +1820,7 @@ const SupplierReport = () => {
       <tbody>
         {supplierDetails.map((record, index) => {
           const weight = Math.abs(parseFloat(record.weight) || 0);
-
-          // Changed: Display Customer price accurately
           const price = Math.abs(parseFloat(record.price_per_kg) || 0);
-
-          // Changed: Row level calculations to reflect the actual bill totals being displayed
           const rowGross = weight * price;
           const rowComm = rowGross * 0.1;
 
@@ -1841,9 +1848,7 @@ const SupplierReport = () => {
                   ),
                 )}
               </td>
-              {/* Changed: Override Sup Total output with correctly calculated gross value */}
               <td style={tdStyle}>{formatDecimal(rowGross)}</td>
-              {/* Changed: Override Commission output with calculated 10% row commission */}
               <td style={tdStyle}>{formatDecimal(rowComm)}</td>
               <td style={tdStyle}>{formatDecimal(record.CustomerPackCost)}</td>
             </tr>
